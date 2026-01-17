@@ -9,3 +9,7 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+[functions]
+  directory = "apps/web/netlify/functions"
+

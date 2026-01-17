@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { COURSE_CONFIG, SYLLABUS_PROMPT } from '@/domains/syllabus/config/syllabus.config'
 
 // Detectar si estamos en Netlify (producción) o local (desarrollo)
-const IS_NETLIFY = process.env.NETLIFY === 'true' || process.env.CONTEXT !== undefined
+// En runtime de Netlify, NEXT_PUBLIC_... a veces es más fiable, o NODE_ENV
+const IS_NETLIFY = process.env.NETLIFY === 'true' || process.env.NODE_ENV === 'production'
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,15 +19,23 @@ export async function POST(request: NextRequest) {
 
     // [NETLIFY LOGIC - Production Background Jobs]
     if (IS_NETLIFY) {
-      console.log('[API/ESP-02] Modo Netlify - Iniciando background function...')
       const siteUrl = process.env.URL || process.env.DEPLOY_URL || 'https://cursos-nocode-v1.netlify.app'
       const backgroundUrl = `${siteUrl}/.netlify/functions/syllabus-generation-background`
+      
+      console.log(`[API/ESP-02] Modo Netlify Detectado. Disparando Background Function a: ${backgroundUrl}`)
 
-      fetch(backgroundUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ artifactId, objetivos, ideaCentral, route, accessToken })
-      }).catch(err => console.error('[API/ESP-02] Background error:', err))
+      // AWAIT obligatorio en serverless para asegurar que el request salga antes de morir
+      try {
+        await fetch(backgroundUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ artifactId, objetivos, ideaCentral, route, accessToken })
+        })
+        console.log('[API/ESP-02] Fetch enviado correctamente.')
+      } catch (err) {
+        console.error('[API/ESP-02] CRITICAL: Falló fetch a background:', err)
+        // No lanzamos error para no romper la UI, pero logueamos fuerte
+      }
 
       return NextResponse.json({
         status: 'processing',

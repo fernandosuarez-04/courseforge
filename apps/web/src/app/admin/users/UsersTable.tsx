@@ -120,15 +120,21 @@ export default function UsersTable({ initialUsers }: { initialUsers: any[] }) {
       </div>
 
       {/* Filters & Search */}
-      <div className="bg-[#151A21] border border-[#6C757D]/10 rounded-2xl p-4 flex flex-col md:flex-row gap-4 justify-between items-center">
+      <div 
+        suppressHydrationWarning={true}
+        className="bg-[#151A21] border border-[#6C757D]/10 rounded-2xl p-4 flex flex-col md:flex-row gap-4 justify-between items-center"
+      >
         <div className="relative w-full md:w-96">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" size={18} />
             <input 
+                suppressHydrationWarning={true}
                 type="text" 
                 placeholder="Buscar usuarios..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-[#0F1419] border border-[#6C757D]/20 rounded-xl py-2 pl-10 pr-4 text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 transition-colors"
+                autoComplete="off"
+                data-lpignore="true"
             />
         </div>
         <div className="flex gap-2 w-full md:w-auto">
