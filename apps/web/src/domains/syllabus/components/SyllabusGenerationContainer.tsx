@@ -10,11 +10,12 @@ interface SyllabusGenerationContainerProps {
   artifactId: string;
   initialObjetivos: string[];
   initialIdeaCentral: string;
+  onNext?: () => void;
 }
 
 type TabMode = 'GENERATE' | 'IMPORT';
 
-export function SyllabusGenerationContainer({ artifactId, initialObjetivos, initialIdeaCentral }: SyllabusGenerationContainerProps) {
+export function SyllabusGenerationContainer({ artifactId, initialObjetivos, initialIdeaCentral, onNext }: SyllabusGenerationContainerProps) {
   const [activeTab, setActiveTab] = useState<TabMode>('GENERATE');
   const [route, setRoute] = useState<Esp02Route | null>('B_NO_SOURCE'); // Default a IA
   const [status, setStatus] = useState<Esp02StepState>('STEP_DRAFT');
@@ -62,7 +63,9 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
         qa: { status: 'PENDING' }
       };
       setTemario(completeTemario);
-      setStatus('STEP_READY_FOR_QA');
+      
+      // FIX: Respetar el estado que viene de BD si existe, sino READY_FOR_QA
+      setStatus((generatedTemario.state as Esp02StepState) || 'STEP_READY_FOR_QA');
   };
 
   // CHECK INITIAL STATE
@@ -369,7 +372,14 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
                                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                 Fase 2 Aprobada
                             </div>
-                            {/* Botón continuar podría ir aquí si hubiera Fase 3 */}
+                            {onNext && (
+                                <button
+                                    onClick={onNext}
+                                    className="flex-1 bg-[#1F5AF6] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#1F5AF6]/20"
+                                >
+                                    Continuar a Plan
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>

@@ -239,7 +239,7 @@ export const handler: Handler = async (event, context) => {
         content.total_estimated_hours = Math.round(estimatedHours * 10) / 10;
 
         content.generation_metadata = {
-            research_summary: researchContext.slice(0, 500) + '...',
+            research_summary: researchContext,
             search_queries: searchQueries,
             models: { search: searchModelName, architect: mainModelName },
             generated_at: new Date().toISOString(),

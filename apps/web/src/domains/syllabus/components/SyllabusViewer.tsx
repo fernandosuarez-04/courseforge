@@ -125,9 +125,27 @@ export function SyllabusViewer({ modules, validation, metadata }: SyllabusViewer
                   {metadata?.research_summary && (
                       <div className="mt-6 pt-6 border-t border-white/5">
                           <p className="text-xs font-bold text-gray-500 mb-2">RESUMEN DE INVESTIGACIÓN</p>
-                          <p className="text-sm text-gray-400 leading-relaxed max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                              {metadata.research_summary}
-                          </p>
+                          <div className="text-sm text-gray-400 leading-relaxed max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                              {metadata.research_summary.split('###').map((part, i) => {
+                                  if (!part.trim()) return null;
+                                  
+                                  const lines = part.trim().split('\n');
+                                  // Detectar si es un título (si viene después de ### o es el inicio de un bloque grande)
+                                  const isTitle = i > 0 || metadata.research_summary?.startsWith('###');
+                                  
+                                  const title = isTitle ? lines[0] : '';
+                                  const content = isTitle ? lines.slice(1).join('\n') : part;
+
+                                  if (!title && !content) return null;
+
+                                  return (
+                                      <div key={i} className="mb-4 last:mb-0">
+                                          {title && <h5 className="font-bold text-white mb-1.5 block">{title}</h5>}
+                                          {content && <p className="whitespace-pre-line">{content.trim()}</p>}
+                                      </div>
+                                  )
+                              })}
+                          </div>
                       </div>
                   )}
               </div>

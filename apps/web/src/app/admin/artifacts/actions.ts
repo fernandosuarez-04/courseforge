@@ -171,3 +171,69 @@ export async function updateArtifactStatusAction(artifactId: string, status: str
     
     return { success: true };
 }
+
+export async function generateInstructionalPlanAction(artifactId: string, customPrompt?: string, useCustomPrompt: boolean = false) {
+    const supabase = await createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { success: false, error: 'Unauthorized' };
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || 'http://localhost:3000';
+    // Construct the URL ensuring we don't have double slashes if env var has trailing slash
+    const baseUrl = appUrl.replace(/\/$/, ''); 
+    const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/instructional-plan-background`;
+
+    try {
+        console.log('Triggering Instructional Plan generation...');
+        console.log('URL:', backgroundFunctionUrl);
+        
+        // Fire and forget fetch request to Netlify Function
+        fetch(backgroundFunctionUrl, {
+            method: 'POST',
+            body: JSON.stringify({
+                artifactId,
+                userToken: session.access_token,
+                customPrompt,
+                useCustomPrompt
+            }),
+        }).catch(err => console.error("Background trigger error (ignored):", err));
+
+        // Return immediately to letting UI show "Generating..." state
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+export async function validateInstructionalPlanAction(artifactId: string) {
+    const supabase = await createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { success: false, error: 'Unauthorized' };
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || 'http://localhost:3000';
+    const baseUrl = appUrl.replace(/\/$/, ''); 
+    const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/instructional-plan-validation`;
+
+    try {
+        // 1. CLEAR previous validation to ensure fresh results
+        // This prevents the UI from "flashing" old data during polling
+        await supabase
+            .from('instructional_plans')
+            .update({ validation: null })
+            .eq('artifact_id', artifactId);
+
+        console.log('Triggering Instructional Plan Validation...');
+        
+        // 2. Trigger Background Job
+        fetch(backgroundFunctionUrl, {
+            method: 'POST',
+            body: JSON.stringify({
+                artifactId,
+                userToken: session.access_token,
+            }),
+        }).catch(err => console.error("Background validation trigger error (ignored):", err));
+
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}

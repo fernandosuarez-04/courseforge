@@ -331,6 +331,7 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                     artifactId={artifact.id}
                     initialObjetivos={artifact.objetivos || []}
                     initialIdeaCentral={artifact.idea_central || ''}
+                    onNext={() => setCurrentStep(3)}
                />
            </div>
        ) : currentStep === 3 ? (
