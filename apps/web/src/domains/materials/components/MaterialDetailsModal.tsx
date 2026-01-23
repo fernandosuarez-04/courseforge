@@ -45,12 +45,25 @@ export function MaterialDetailsModal({
   const [activeTab, setActiveTab] = useState<"preview" | "dod" | "iteration">(
     "preview",
   );
+  const getComponentIcon = (type: ComponentType) => {
+    switch (type) {
+      case "DIALOGUE": return <MessageSquare className="w-4 h-4" />;
+      case "READING": return <BookOpen className="w-4 h-4" />;
+      case "QUIZ": return <HelpCircle className="w-4 h-4" />;
+      case "DEMO_GUIDE": return <ListOrdered className="w-4 h-4" />;
+      case "EXERCISE": return <Layout className="w-4 h-4" />;
+      case "VIDEO_DEMO": return <Play className="w-4 h-4" />;
+      default: return <Layout className="w-4 h-4" />;
+    }
+  };
+
+  const selectedComponent = components.find((c) => c.id === selectedComponentId);
 
   return (
     <AnimatePresence>
       {isOpen && (
         <div
-          className="fixed inset-0 flex items-center justify-center z-[9999] dark"
+          className="fixed inset-0 flex items-center justify-center z-[9999]"
           style={{ fontFamily: "Inter, sans-serif" }}
         >
           {/* Backdrop */}

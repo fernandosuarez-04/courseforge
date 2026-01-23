@@ -19,6 +19,13 @@ import {
     ListOrdered,
     ChevronDown,
     ChevronUp,
+    Download,
+    ExternalLink,
+    Maximize2,
+    Sparkles,
+    CheckCircle,
+    Clock,
+    AlertTriangle,
     User,
     Bot,
 } from 'lucide-react';
@@ -63,19 +70,19 @@ export function ComponentViewer({ component, variant = 'card', className = '' }:
     const renderContent = () => {
         switch (component.type) {
             case 'DIALOGUE':
-                return <DialogueViewer content={component.content as DialogueContent} />;
+                return <DialogueViewer content={component.content as unknown as DialogueContent} />;
             case 'READING':
-                return <ReadingViewer content={component.content as ReadingContent} />;
+                return <ReadingViewer content={component.content as unknown as ReadingContent} />;
             case 'QUIZ':
-                return <QuizViewer content={component.content as QuizContent} />;
+                return <QuizViewer content={component.content as unknown as QuizContent} />;
             case 'DEMO_GUIDE':
-                return <DemoGuideViewer content={component.content as DemoGuideContent} />;
+                return <DemoGuideViewer content={component.content as unknown as DemoGuideContent} />;
             case 'EXERCISE':
-                return <ExerciseViewer content={component.content as ExerciseContent} />;
+                return <ExerciseViewer content={component.content as unknown as ExerciseContent} />;
             case 'VIDEO_THEORETICAL':
             case 'VIDEO_DEMO':
             case 'VIDEO_GUIDE':
-                return <VideoViewer content={component.content as VideoContent} />;
+                return <VideoViewer content={component.content as unknown as VideoContent} />;
             default:
                 return <pre className="text-xs overflow-auto">{JSON.stringify(component.content, null, 2)}</pre>;
         }
