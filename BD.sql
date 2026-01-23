@@ -97,6 +97,55 @@ CREATE TABLE public.login_history (
   CONSTRAINT login_history_pkey PRIMARY KEY (id),
   CONSTRAINT login_history_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
 );
+CREATE TABLE public.material_components (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  material_lesson_id uuid NOT NULL,
+  type text NOT NULL,
+  content jsonb NOT NULL,
+  source_refs ARRAY DEFAULT '{}'::text[],
+  validation_status text NOT NULL DEFAULT 'PENDING'::text,
+  validation_errors ARRAY DEFAULT '{}'::text[],
+  generated_at timestamp with time zone NOT NULL DEFAULT now(),
+  iteration_number integer NOT NULL DEFAULT 1,
+  CONSTRAINT material_components_pkey PRIMARY KEY (id),
+  CONSTRAINT material_components_material_lesson_id_fkey FOREIGN KEY (material_lesson_id) REFERENCES public.material_lessons(id)
+);
+CREATE TABLE public.material_lessons (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  materials_id uuid NOT NULL,
+  lesson_id text NOT NULL,
+  lesson_title text NOT NULL,
+  module_id text NOT NULL,
+  module_title text NOT NULL,
+  oa_text text NOT NULL,
+  expected_components ARRAY NOT NULL DEFAULT '{}'::text[],
+  quiz_spec jsonb,
+  requires_demo_guide boolean DEFAULT false,
+  dod jsonb NOT NULL DEFAULT '{}'::jsonb,
+  state text NOT NULL DEFAULT 'PENDING'::text,
+  iteration_count integer NOT NULL DEFAULT 0,
+  max_iterations integer NOT NULL DEFAULT 2,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT material_lessons_pkey PRIMARY KEY (id),
+  CONSTRAINT material_lessons_materials_id_fkey FOREIGN KEY (materials_id) REFERENCES public.materials(id)
+);
+CREATE TABLE public.materials (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  artifact_id uuid NOT NULL UNIQUE,
+  version integer NOT NULL DEFAULT 1,
+  prompt_version text NOT NULL DEFAULT 'default'::text,
+  state text NOT NULL DEFAULT 'PHASE3_DRAFT'::text,
+  qa_decision jsonb,
+  package jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  lessons jsonb DEFAULT '[]'::jsonb,
+  global_blockers jsonb DEFAULT '[]'::jsonb,
+  dod jsonb DEFAULT '{"checklist": [], "automatic_checks": []}'::jsonb,
+  CONSTRAINT materials_pkey PRIMARY KEY (id),
+  CONSTRAINT materials_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
+);
 CREATE TABLE public.model_settings (
   id integer NOT NULL DEFAULT 1,
   model_name text NOT NULL DEFAULT 'gemini-2.0-flash'::text,

@@ -96,7 +96,7 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
     // Asumimos que artifact tiene relación con syllabus y trae su estado.
     const syllabusApproved = artifact.syllabus_status === 'STEP_APPROVED' || (artifact.temario && artifact.temario.qa?.status === 'APPROVED');
     const planApproved = artifact.plan_state === 'STEP_APPROVED';
-    const curationApproved = artifact.curation_state === 'PHASE2_APPROVED';
+    const curationApproved = artifact.curation_state === 'PHASE2_APPROVED' || artifact.curation_state === 'PHASE2_READY_FOR_QA' || artifact.curation_state === 'PHASE2_HITL_REVIEW' || artifact.curation_state === 'PHASE2_GENERATED';
 
 
 
@@ -142,8 +142,8 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
             {toast.show && (
                 <div className="fixed top-6 right-6 z-50 animate-in fade-in slide-in-from-top-4 duration-300">
                     <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-md ${toast.type === 'success' ? 'bg-[#00D4B3]/10 border-[#00D4B3]/20 text-[#00D4B3]' :
-                            toast.type === 'error' ? 'bg-[#EF4444]/10 border-[#EF4444]/20 text-[#EF4444]' :
-                                'bg-[#151A21] border-[#6C757D]/20 text-white'
+                        toast.type === 'error' ? 'bg-[#EF4444]/10 border-[#EF4444]/20 text-[#EF4444]' :
+                            'bg-[#151A21] border-[#6C757D]/20 text-white'
                         }`}>
                         {toast.type === 'success' && <CheckCircle2 size={18} />}
                         {toast.type === 'error' && <AlertCircle size={18} />}

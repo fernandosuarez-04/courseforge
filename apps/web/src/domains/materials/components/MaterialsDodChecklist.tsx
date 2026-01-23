@@ -45,11 +45,11 @@ export function MaterialsDodChecklist({ dod, checks, className = '' }: Materials
     const getStatusBg = (status: 'PASS' | 'FAIL' | 'PENDING') => {
         switch (status) {
             case 'PASS':
-                return 'bg-green-50 border-green-200';
+                return 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800';
             case 'FAIL':
-                return 'bg-red-50 border-red-200';
+                return 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800';
             case 'PENDING':
-                return 'bg-gray-50 border-gray-200';
+                return 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10';
         }
     };
 
@@ -60,15 +60,15 @@ export function MaterialsDodChecklist({ dod, checks, className = '' }: Materials
         <div className={`space-y-4 ${className}`}>
             {/* Header */}
             <div className="flex items-center justify-between">
-                <h4 className="font-semibold text-gray-900">Definition of Done (DoD)</h4>
+                <h4 className="font-semibold text-gray-900 dark:text-white">Definition of Done (DoD)</h4>
                 {allPassed && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 rounded-full">
                         <CheckCircle className="h-3 w-3" />
                         Todos los controles pasaron
                     </span>
                 )}
                 {hasFails && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 rounded-full">
                         <AlertTriangle className="h-3 w-3" />
                         Requiere correcciones
                     </span>
@@ -86,8 +86,8 @@ export function MaterialsDodChecklist({ dod, checks, className = '' }: Materials
                             {getStatusIcon(control.status)}
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900">{control.label}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">{control.description}</p>
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">{control.label}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{control.description}</p>
                         </div>
                     </div>
                 ))}
@@ -96,10 +96,10 @@ export function MaterialsDodChecklist({ dod, checks, className = '' }: Materials
             {/* Errors List */}
             {dod.errors && dod.errors.length > 0 && (
                 <div className="mt-4">
-                    <h5 className="text-sm font-medium text-red-700 mb-2">Errores detectados:</h5>
+                    <h5 className="text-sm font-medium text-red-700 dark:text-red-400 mb-2">Errores detectados:</h5>
                     <ul className="space-y-1">
                         {dod.errors.map((error, index) => (
-                            <li key={index} className="flex items-start gap-2 text-sm text-red-600">
+                            <li key={index} className="flex items-start gap-2 text-sm text-red-600 dark:text-red-400">
                                 <XCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
                                 <span>{error}</span>
                             </li>
@@ -111,10 +111,10 @@ export function MaterialsDodChecklist({ dod, checks, className = '' }: Materials
             {/* Detailed Checks (if provided) */}
             {checks && checks.length > 0 && (
                 <details className="mt-4">
-                    <summary className="text-sm font-medium text-gray-600 cursor-pointer hover:text-gray-800">
+                    <summary className="text-sm font-medium text-gray-600 dark:text-gray-400 cursor-pointer hover:text-gray-800 dark:hover:text-gray-200">
                         Ver validaciones detalladas ({checks.length})
                     </summary>
-                    <div className="mt-2 space-y-1 pl-4 border-l-2 border-gray-200">
+                    <div className="mt-2 space-y-1 pl-4 border-l-2 border-gray-200 dark:border-white/10">
                         {checks.map((check, index) => (
                             <div key={index} className="flex items-center gap-2 text-xs">
                                 {check.pass ? (
@@ -122,7 +122,7 @@ export function MaterialsDodChecklist({ dod, checks, className = '' }: Materials
                                 ) : (
                                     <XCircle className="h-3 w-3 text-red-500" />
                                 )}
-                                <span className={check.pass ? 'text-gray-600' : 'text-red-600'}>
+                                <span className={check.pass ? 'text-gray-600 dark:text-gray-400' : 'text-red-600 dark:text-red-400'}>
                                     [{check.code}] {check.message}
                                 </span>
                             </div>

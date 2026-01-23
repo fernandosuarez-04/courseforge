@@ -78,13 +78,13 @@ export function LessonMaterialsCard({ lesson, onIterationStart, className = '' }
 
     const getStateBg = (state: LessonMaterialState) => {
         const colors: Record<LessonMaterialState, string> = {
-            PENDING: 'bg-gray-100',
-            GENERATING: 'bg-blue-50',
-            GENERATED: 'bg-blue-50',
-            VALIDATING: 'bg-yellow-50',
-            APPROVABLE: 'bg-green-50',
-            NEEDS_FIX: 'bg-orange-50',
-            BLOCKED: 'bg-red-50',
+            PENDING: 'bg-gray-100 dark:bg-white/5',
+            GENERATING: 'bg-blue-50 dark:bg-blue-900/20',
+            GENERATED: 'bg-blue-50 dark:bg-blue-900/20',
+            VALIDATING: 'bg-yellow-50 dark:bg-yellow-900/20',
+            APPROVABLE: 'bg-green-50 dark:bg-green-900/20',
+            NEEDS_FIX: 'bg-orange-50 dark:bg-orange-900/20',
+            BLOCKED: 'bg-red-50 dark:bg-red-900/20',
         };
         return colors[state];
     };
@@ -96,24 +96,24 @@ export function LessonMaterialsCard({ lesson, onIterationStart, className = '' }
     };
 
     return (
-        <div className={`border rounded-lg overflow-hidden ${getStateBg(lesson.state)} ${className}`}>
+        <div className={`border dark:border-white/10 rounded-lg overflow-hidden ${getStateBg(lesson.state)} ${className}`}>
             {/* Header */}
             <button
                 onClick={() => setExpanded(!expanded)}
-                className="w-full flex items-center justify-between p-4 hover:bg-white/50 transition-colors"
+                className="w-full flex items-center justify-between p-4 hover:bg-white/50 dark:hover:bg-white/5 transition-colors"
             >
                 <div className="flex items-center gap-3">
                     {getStateIcon(lesson.state)}
                     <div className="text-left">
-                        <h4 className="font-medium text-gray-900">{lesson.lesson_title}</h4>
-                        <p className="text-xs text-gray-500">{lesson.module_title}</p>
+                        <h4 className="font-medium text-gray-900 dark:text-white">{lesson.lesson_title}</h4>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{lesson.module_title}</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
-                    <span className={`text-xs px-2 py-1 rounded-full ${lesson.state === 'APPROVABLE' ? 'bg-green-100 text-green-800' :
-                            lesson.state === 'NEEDS_FIX' ? 'bg-orange-100 text-orange-800' :
-                                lesson.state === 'BLOCKED' ? 'bg-red-100 text-red-800' :
-                                    'bg-gray-100 text-gray-800'
+                    <span className={`text-xs px-2 py-1 rounded-full ${lesson.state === 'APPROVABLE' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' :
+                        lesson.state === 'NEEDS_FIX' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300' :
+                            lesson.state === 'BLOCKED' ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300' :
+                                'bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-300'
                         }`}>
                         {getStateLabel(lesson.state)}
                     </span>
@@ -123,16 +123,16 @@ export function LessonMaterialsCard({ lesson, onIterationStart, className = '' }
 
             {/* Expanded Content */}
             {expanded && (
-                <div className="border-t bg-white p-4 space-y-4">
+                <div className="border-t dark:border-white/10 bg-white dark:bg-[#1E2329] p-4 space-y-4">
                     {/* OA */}
-                    <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-500 mb-1">Objetivo de Aprendizaje:</p>
-                        <p className="text-sm">{lesson.oa_text}</p>
+                    <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg">
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Objetivo de Aprendizaje:</p>
+                        <p className="text-sm dark:text-gray-200">{lesson.oa_text}</p>
                     </div>
 
                     {/* Expected Components */}
                     <div>
-                        <p className="text-xs text-gray-500 mb-2">Componentes esperados:</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Componentes esperados:</p>
                         <div className="flex flex-wrap gap-2">
                             {lesson.expected_components.map((comp) => {
                                 const generated = components.find((c) => c.type === comp);
@@ -140,8 +140,8 @@ export function LessonMaterialsCard({ lesson, onIterationStart, className = '' }
                                     <span
                                         key={comp}
                                         className={`text-xs px-2 py-1 rounded ${generated
-                                                ? 'bg-green-100 text-green-800'
-                                                : 'bg-gray-100 text-gray-600'
+                                            ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+                                            : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400'
                                             }`}
                                     >
                                         {comp}
@@ -169,17 +169,17 @@ export function LessonMaterialsCard({ lesson, onIterationStart, className = '' }
                     {/* Components */}
                     {loadingComponents ? (
                         <div className="flex items-center justify-center py-8">
-                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                            <Loader2 className="h-6 w-6 animate-spin text-gray-400 dark:text-gray-500" />
                         </div>
                     ) : components.length > 0 ? (
                         <div className="space-y-3">
-                            <h5 className="text-sm font-medium">Materiales generados:</h5>
+                            <h5 className="text-sm font-medium dark:text-white">Materiales generados:</h5>
                             {components.map((comp) => (
                                 <ComponentViewer key={comp.id} component={comp} />
                             ))}
                         </div>
                     ) : (
-                        <p className="text-sm text-gray-500 text-center py-4">
+                        <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
                             No hay materiales generados aún
                         </p>
                     )}
