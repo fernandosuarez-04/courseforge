@@ -9,7 +9,7 @@ export default async function ArtifactsPage() {
   // 1. Fetch Artifacts
   const { data: artifacts } = await supabase
     .from('artifacts')
-    .select('*')
+    .select('*, syllabus(state), instructional_plans(state)')
     .order('created_at', { ascending: false });
 
   // 2. Fetch Profiles related to these artifacts
@@ -25,10 +25,18 @@ export default async function ArtifactsPage() {
   }
 
   // 3. Merge data
-  const artifactsWithProfiles = artifacts?.map((art: any) => ({
-      ...art,
-      profiles: profiles.find((p: any) => p.id === art.created_by)
-  })) || [];
+  const artifactsWithProfiles = artifacts?.map((art: any) => {
+      // Supabase returns 1:N relations as arrays
+      const syllabus = Array.isArray(art.syllabus) ? art.syllabus[0] : art.syllabus;
+      const instructional_plan = Array.isArray(art.instructional_plans) ? art.instructional_plans[0] : art.instructional_plans;
+
+      return {
+        ...art,
+        syllabus_state: syllabus?.state,
+        plan_state: instructional_plan?.state,
+        profiles: profiles.find((p: any) => p.id === art.created_by)
+      };
+  }) || [];
 
   return (
     <div className="space-y-6">
@@ -47,7 +55,7 @@ export default async function ArtifactsPage() {
        </div>
 
        {/* Client List Component */}
-       <ArtifactsList initialArtifacts={artifactsWithProfiles} />
+       <ArtifactsList initialArtifacts={artifactsWithProfiles} currentUserId={(await supabase.auth.getUser()).data.user?.id} />
     </div>
   )
 }

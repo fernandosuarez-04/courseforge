@@ -36,11 +36,12 @@ export function LessonMaterialsCard({ lesson, onIterationStart, className = '' }
     const [showModal, setShowModal] = useState(false);
 
     // Load components when expanded
+    // Load components when expanded or when lesson updates (e.g. after iteration)
     useEffect(() => {
-        if (expanded && components.length === 0) {
+        if (expanded) {
             loadComponents();
         }
-    }, [expanded]);
+    }, [expanded, lesson.iteration_count, lesson.state]);
 
     const loadComponents = async () => {
         setLoadingComponents(true);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -39,12 +39,24 @@ export function MaterialDetailsModal({
   onClose,
   onIterationStart,
 }: MaterialDetailsModalProps) {
-  const [selectedComponentId, setSelectedComponentId] = useState<string | null>(
-    components.length > 0 ? components[0].id : null,
+  const [selectedType, setSelectedType] = useState<ComponentType | null>(
+    components.length > 0 ? components[0].type : null,
   );
   const [activeTab, setActiveTab] = useState<"preview" | "dod" | "iteration">(
     "preview",
   );
+
+  // Sync selection when components change (e.g., after iteration)
+  useEffect(() => {
+    if (components.length > 0) {
+      if (!selectedType || !components.some(c => c.type === selectedType)) {
+        setSelectedType(components[0].type);
+      }
+    } else {
+        setSelectedType(null);
+    }
+  }, [components, selectedType]);
+
   const getComponentIcon = (type: ComponentType) => {
     switch (type) {
       case "DIALOGUE": return <MessageSquare className="w-4 h-4" />;
@@ -57,7 +69,7 @@ export function MaterialDetailsModal({
     }
   };
 
-  const selectedComponent = components.find((c) => c.id === selectedComponentId);
+  const selectedComponent = components.find((c) => c.type === selectedType);
 
   return (
     <AnimatePresence>
@@ -120,11 +132,11 @@ export function MaterialDetailsModal({
                   <button
                     key={comp.id}
                     onClick={() => {
-                      setSelectedComponentId(comp.id);
+                      setSelectedType(comp.type);
                       setActiveTab("preview");
                     }}
                     className={`w-full flex items-center gap-3 p-3 rounded-xl text-sm transition-all ${
-                      selectedComponentId === comp.id
+                      selectedType === comp.type
                         ? "bg-white dark:bg-[#1E2329] text-blue-600 dark:text-[#00D4B3] shadow-md dark:shadow-shadow-black/20 border border-gray-200 dark:border-white/5"
                         : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-white/5"
                     }`}
@@ -133,7 +145,7 @@ export function MaterialDetailsModal({
                     <span className="flex-1 text-left truncate">
                       {comp.type.replace(/_/g, " ")}
                     </span>
-                    {selectedComponentId === comp.id && (
+                    {selectedType === comp.type && (
                       <motion.div
                         layoutId="activeIndicator"
                         className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-[#00D4B3]"
