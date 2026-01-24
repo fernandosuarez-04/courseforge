@@ -621,22 +621,136 @@ export async function saveMaterialAssetsAction(componentId: string, assets: any)
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return { success: false, error: 'Unauthorized' };
 
-    // Fetch existing assets to merge
+    // Fetch existing component data (including type for context)
     const { data: component } = await supabase
         .from('material_components')
-        .select('assets')
+        .select('assets, type, material_lesson_id')
         .eq('id', componentId)
         .single();
 
     const currentAssets = component?.assets || {};
-    const newAssets = { ...currentAssets, ...assets };
+    const mergedAssets = { ...currentAssets, ...assets };
+
+    // Auto-calculate DoD checklist based on merged assets
+    const dodChecklist = {
+        has_slides_url: !!mergedAssets.slides_url,
+        has_video_url: !!mergedAssets.video_url,
+        has_screencast_url: !!mergedAssets.screencast_url,
+        has_b_roll_prompts: !!mergedAssets.b_roll_prompts,
+        has_final_video_url: !!mergedAssets.final_video_url,
+    };
+
+    // Auto-calculate production status based on component type and assets
+    const componentType = component?.type || '';
+    let productionStatus = 'PENDING';
+
+    // Determine required assets based on component type
+    const needsSlides = componentType === 'VIDEO_THEORETICAL' || componentType === 'VIDEO_GUIDE';
+    const needsScreencast = componentType === 'DEMO_GUIDE' || componentType === 'VIDEO_GUIDE';
+    const needsVideo = componentType.includes('VIDEO');
+    const needsFinalVideo = componentType.includes('VIDEO');
+
+    // Calculate status - COMPLETED only when final video is set
+    const hasRequiredSlides = !needsSlides || dodChecklist.has_slides_url;
+    const hasRequiredScreencast = !needsScreencast || dodChecklist.has_screencast_url;
+    const hasRequiredVideo = !needsVideo || dodChecklist.has_video_url;
+    const hasRequiredFinalVideo = !needsFinalVideo || dodChecklist.has_final_video_url;
+
+    if (hasRequiredSlides && hasRequiredScreencast && hasRequiredVideo && hasRequiredFinalVideo) {
+        productionStatus = 'COMPLETED';
+    } else if (dodChecklist.has_final_video_url) {
+        // Has final video but missing some intermediate assets - still completed
+        productionStatus = 'COMPLETED';
+    } else if (dodChecklist.has_slides_url || dodChecklist.has_video_url || dodChecklist.has_screencast_url) {
+        productionStatus = 'IN_PROGRESS';
+    } else if (dodChecklist.has_b_roll_prompts) {
+        productionStatus = 'IN_PROGRESS';
+    }
+
+    // Build final assets object
+    const finalAssets = {
+        ...mergedAssets,
+        production_status: productionStatus,
+        dod_checklist: dodChecklist,
+        updated_at: new Date().toISOString(),
+    };
 
     const { error } = await supabase
         .from('material_components')
-        .update({ assets: newAssets })
+        .update({ assets: finalAssets })
         .eq('id', componentId);
 
     if (error) return { success: false, error: error.message };
+
+    // Log pipeline event for status change
+    if (component?.material_lesson_id) {
+        // Fetch artifact_id through the chain
+        const { data: lesson } = await supabase
+            .from('material_lessons')
+            .select('materials_id')
+            .eq('id', component.material_lesson_id)
+            .single();
+
+        if (lesson?.materials_id) {
+            const { data: materials } = await supabase
+                .from('materials')
+                .select('artifact_id')
+                .eq('id', lesson.materials_id)
+                .single();
+
+            if (materials?.artifact_id) {
+                await logPipelineEventAction(
+                    materials.artifact_id,
+                    productionStatus === 'COMPLETED' ? 'GO-OP-06_ASSET_COMPLETED' : 'GO-OP-06_ASSET_UPDATED',
+                    {
+                        component_id: componentId,
+                        component_type: componentType,
+                        production_status: productionStatus,
+                        dod_checklist: dodChecklist,
+                    },
+                    'GO-OP-06',
+                    componentId,
+                    'material_component'
+                );
+            }
+        }
+    }
+
+    return { success: true, productionStatus, dodChecklist };
+}
+
+// Registrar eventos de pipeline para trazabilidad
+export async function logPipelineEventAction(
+    artifactId: string,
+    eventType: string,
+    eventData: Record<string, any> = {},
+    stepId?: string,
+    entityId?: string,
+    entityType?: string
+) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const { error } = await supabase
+        .from('pipeline_events')
+        .insert({
+            artifact_id: artifactId,
+            event_type: eventType,
+            event_data: {
+                ...eventData,
+                triggered_by: user.email || user.id,
+                timestamp: new Date().toISOString(),
+            },
+            step_id: stepId || null,
+            entity_id: entityId || null,
+            entity_type: entityType || null,
+        });
+
+    if (error) {
+        console.error('Error logging pipeline event:', error);
+        return { success: false, error: error.message };
+    }
 
     return { success: true };
 }

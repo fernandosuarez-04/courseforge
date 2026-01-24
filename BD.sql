@@ -107,6 +107,7 @@ CREATE TABLE public.material_components (
   validation_errors ARRAY DEFAULT '{}'::text[],
   generated_at timestamp with time zone NOT NULL DEFAULT now(),
   iteration_number integer NOT NULL DEFAULT 1,
+  assets jsonb DEFAULT '{}'::jsonb,
   CONSTRAINT material_components_pkey PRIMARY KEY (id),
   CONSTRAINT material_components_material_lesson_id_fkey FOREIGN KEY (material_lesson_id) REFERENCES public.material_lessons(id)
 );

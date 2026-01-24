@@ -30,6 +30,11 @@ interface Artifact {
     username: string;
     email: string;
   } | null;
+  production_status?: {
+    total: number;
+    completed: number;
+  };
+  production_complete?: boolean;
 }
 
 const statusConfig: Record<
@@ -76,6 +81,11 @@ const statusConfig: Record<
   REJECTED: {
     label: "Rechazado",
     color: "text-red-400 bg-red-500/10 border-red-500/20",
+  },
+  PRODUCTION_COMPLETE: {
+    label: "🎬 Producción Completa",
+    color: "text-emerald-300 bg-emerald-500/20 border-emerald-400/40",
+    icon: CheckCircle2,
   },
 };
 
@@ -209,11 +219,10 @@ export default function ArtifactsList({
               <button
                 key={tab.id}
                 onClick={() => setFilterStatus(tab.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors border ${
-                  filterStatus === tab.id
-                    ? "bg-[#00D4B3]/10 text-[#00D4B3] border-[#00D4B3]/20"
-                    : "text-[#94A3B8] border-transparent hover:text-white hover:bg-[#1E2329]"
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors border ${filterStatus === tab.id
+                  ? "bg-[#00D4B3]/10 text-[#00D4B3] border-[#00D4B3]/20"
+                  : "text-[#94A3B8] border-transparent hover:text-white hover:bg-[#1E2329]"
+                  }`}
               >
                 {tab.label}
               </button>
@@ -286,7 +295,9 @@ function ArtifactCard({
   artifact: Artifact;
   viewMode: "grid" | "list";
 }) {
-  const status = statusConfig[artifact.state] || statusConfig.DRAFT;
+  // Determine display status - prioritize PRODUCTION_COMPLETE if all videos done
+  const displayState = artifact.production_complete ? 'PRODUCTION_COMPLETE' : artifact.state;
+  const status = statusConfig[displayState] || statusConfig.DRAFT;
   const StatusIcon = status.icon;
 
   // TimeAgo logic simple
@@ -343,7 +354,7 @@ function ArtifactCard({
                 size={12}
                 className={
                   status.label.includes("Generando") ||
-                  status.label.includes("Validando")
+                    status.label.includes("Validando")
                     ? "animate-spin"
                     : ""
                 }
@@ -385,7 +396,7 @@ function ArtifactCard({
                 size={12}
                 className={
                   status.label.includes("Generando") ||
-                  status.label.includes("Validando")
+                    status.label.includes("Validando")
                     ? "animate-spin"
                     : ""
                 }
@@ -422,7 +433,14 @@ function ArtifactCard({
               {artifact.profiles?.username || "Usuario"}
             </span>
           </div>
-          <span className="text-xs text-[#6C757D]">{timeDisplay}</span>
+          <div className="flex items-center gap-3">
+            {artifact.production_status && artifact.production_status.total > 0 && (
+              <span className={`text-xs ${artifact.production_complete ? 'text-emerald-400' : 'text-[#6C757D]'}`}>
+                🎬 {artifact.production_status.completed}/{artifact.production_status.total}
+              </span>
+            )}
+            <span className="text-xs text-[#6C757D]">{timeDisplay}</span>
+          </div>
         </div>
       </div>
     </Link>
