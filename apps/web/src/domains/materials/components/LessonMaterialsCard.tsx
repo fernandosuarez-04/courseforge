@@ -26,14 +26,20 @@ import { MaterialDetailsModal } from './MaterialDetailsModal';
 interface LessonMaterialsCardProps {
     lesson: MaterialLesson;
     onIterationStart?: (lessonId: string, instructions: string) => void;
+    onValidateLesson?: (lessonId: string) => Promise<void>;
+    onRegenerateLesson?: (lessonId: string) => Promise<void>;
+    onMarkForFix?: (lessonId: string) => Promise<void>;
     className?: string;
 }
 
-export function LessonMaterialsCard({ lesson, onIterationStart, className = '' }: LessonMaterialsCardProps) {
+export function LessonMaterialsCard({ lesson, onIterationStart, onValidateLesson, onRegenerateLesson, onMarkForFix, className = '' }: LessonMaterialsCardProps) {
     const [expanded, setExpanded] = useState(false);
     const [components, setComponents] = useState<MaterialComponent[]>([]);
     const [loadingComponents, setLoadingComponents] = useState(false);
     const [showModal, setShowModal] = useState(false);
+    const [isValidating, setIsValidating] = useState(false);
+    const [isRegenerating, setIsRegenerating] = useState(false);
+    const [isMarking, setIsMarking] = useState(false);
 
     // Load components when expanded
     // Load components when expanded or when lesson updates (e.g. after iteration)
@@ -100,6 +106,36 @@ export function LessonMaterialsCard({ lesson, onIterationStart, className = '' }
         }
     };
 
+    const handleValidate = async () => {
+        if (!onValidateLesson) return;
+        setIsValidating(true);
+        try {
+            await onValidateLesson(lesson.id);
+        } finally {
+            setIsValidating(false);
+        }
+    };
+
+    const handleRegenerate = async () => {
+        if (!onRegenerateLesson) return;
+        setIsRegenerating(true);
+        try {
+            await onRegenerateLesson(lesson.id);
+        } finally {
+            setIsRegenerating(false);
+        }
+    };
+
+    const handleMarkForFix = async () => {
+        if (!onMarkForFix) return;
+        setIsMarking(true);
+        try {
+            await onMarkForFix(lesson.id);
+        } finally {
+            setIsMarking(false);
+        }
+    };
+
     return (
         <div className={`border rounded-2xl overflow-hidden transition-all duration-300 shadow-lg shadow-black/5 dark:shadow-black/20 
             bg-white dark:bg-[#1E2329] border-gray-200 dark:border-white/5 
@@ -133,7 +169,7 @@ export function LessonMaterialsCard({ lesson, onIterationStart, className = '' }
                         {getStateLabel(lesson.state)}
                     </span>
                     <div className={`transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`}>
-                         <ChevronDown className="h-5 w-5 text-gray-500 group-hover:text-white" />
+                        <ChevronDown className="h-5 w-5 text-gray-500 group-hover:text-white" />
                     </div>
                 </div>
             </button>
@@ -162,11 +198,10 @@ export function LessonMaterialsCard({ lesson, onIterationStart, className = '' }
                                 return (
                                     <div
                                         key={comp}
-                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                                            generated
+                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${generated
                                             ? 'bg-green-50 dark:bg-[#00D4B3]/10 border-green-200 dark:border-[#00D4B3]/30 text-green-700 dark:text-[#00D4B3]'
                                             : 'bg-white dark:bg-white/5 border-gray-200 dark:border-white/5 text-gray-400 dark:text-gray-500'
-                                        }`}
+                                            }`}
                                     >
                                         <div className={`w-1.5 h-1.5 rounded-full ${generated ? 'bg-green-500 dark:bg-[#00D4B3]' : 'bg-gray-300 dark:bg-gray-600'}`} />
                                         {comp.replace(/_/g, ' ')}
@@ -180,6 +215,45 @@ export function LessonMaterialsCard({ lesson, onIterationStart, className = '' }
                     {lesson.dod && (
                         <MaterialsDodChecklist dod={lesson.dod} />
                     )}
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2 pt-2 border-t dark:border-white/10">
+                        {/* Validate Button - show when GENERATED or PENDING */}
+                        {(lesson.state === 'GENERATED' || lesson.state === 'PENDING') && onValidateLesson && (
+                            <button
+                                onClick={handleValidate}
+                                disabled={isValidating}
+                                className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-yellow-700 bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:hover:bg-yellow-900/50 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                {isValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                                Validar
+                            </button>
+                        )}
+
+                        {/* Regenerate Button - show when NEEDS_FIX */}
+                        {lesson.state === 'NEEDS_FIX' && onRegenerateLesson && (
+                            <button
+                                onClick={handleRegenerate}
+                                disabled={isRegenerating || lesson.iteration_count >= lesson.max_iterations}
+                                className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:hover:bg-orange-900/50 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                {isRegenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+                                Regenerar ({lesson.iteration_count}/{lesson.max_iterations})
+                            </button>
+                        )}
+
+                        {/* Mark for Fix Button - show when APPROVABLE or GENERATED */}
+                        {(lesson.state === 'APPROVABLE' || lesson.state === 'GENERATED') && onMarkForFix && (
+                            <button
+                                onClick={handleMarkForFix}
+                                disabled={isMarking}
+                                className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-red-700 bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                {isMarking ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                                Marcar para Corrección
+                            </button>
+                        )}
+                    </div>
 
                     {/* Iteration Panel */}
                     {lesson.state === 'NEEDS_FIX' && (
@@ -198,13 +272,13 @@ export function LessonMaterialsCard({ lesson, onIterationStart, className = '' }
                         </div>
                     ) : components.length > 0 ? (
                         <div className="pt-2">
-                             <button
+                            <button
                                 onClick={() => setShowModal(true)}
                                 className="w-full group relative overflow-hidden rounded-xl bg-gradient-to-br from-[#0A2540] to-[#1E2329] p-6 border border-white/10 hover:border-[#00D4B3]/50 transition-all duration-300"
                             >
                                 <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10" />
                                 <div className="absolute inset-0 bg-gradient-to-r from-[#00D4B3]/0 via-[#00D4B3]/5 to-[#00D4B3]/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-                                
+
                                 <div className="relative flex items-center justify-between">
                                     <div className="flex items-center gap-4">
                                         <div className="w-12 h-12 rounded-lg flex items-center justify-center transition-transform group-hover:scale-110
@@ -232,7 +306,7 @@ export function LessonMaterialsCard({ lesson, onIterationStart, className = '' }
                 </div>
             )}
 
-            <MaterialDetailsModal 
+            <MaterialDetailsModal
                 lesson={lesson}
                 components={components}
                 isOpen={showModal}

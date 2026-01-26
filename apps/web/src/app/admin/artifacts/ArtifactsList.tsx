@@ -34,6 +34,11 @@ interface Artifact {
     username: string;
     email: string;
   } | null;
+  production_status?: {
+    total: number;
+    completed: number;
+  };
+  production_complete?: boolean;
 }
 
 const statusConfig: Record<
@@ -80,6 +85,11 @@ const statusConfig: Record<
   REJECTED: {
     label: "Rechazado",
     color: "text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-500/10 border-red-200 dark:border-red-500/20",
+  },
+  PRODUCTION_COMPLETE: {
+    label: "🎬 Producción Completa",
+    color: "text-emerald-300 bg-emerald-500/20 border-emerald-400/40",
+    icon: CheckCircle2,
   },
 };
 
@@ -189,7 +199,7 @@ export default function ArtifactsList({
       .includes(searchQuery.toLowerCase());
     const matchesStatus = filterStatus === "all" || art.state === filterStatus;
     const matchesOwnership = ownershipFilter === "all" || (ownershipFilter === "mine" && art.created_by === currentUserId);
-    
+
     return matchesSearch && matchesStatus && matchesOwnership;
   });
 
@@ -210,47 +220,45 @@ export default function ArtifactsList({
     <div className="space-y-6">
       {/* Search and Filters Toolbar */}
       <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-4 flex flex-col md:flex-row gap-4 justify-between items-center shadow-sm dark:shadow-none transition-colors">
-        
+
         {/* Left Side: Search + Ownership Toggle */}
         <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto items-center">
-            {/* Ownership Toggle */}
-            <div className="bg-gray-100 dark:bg-[#0F1419] p-1 rounded-xl flex items-center border border-gray-200 dark:border-[#6C757D]/20">
-                <button
-                    onClick={() => setOwnershipFilter('all')}
-                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                        ownershipFilter === 'all'
-                        ? 'bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white shadow-sm'
-                        : 'text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white'
-                    }`}
-                >
-                    Todos
-                </button>
-                <button
-                    onClick={() => setOwnershipFilter('mine')}
-                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                        ownershipFilter === 'mine'
-                        ? 'bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white shadow-sm'
-                        : 'text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white'
-                    }`}
-                >
-                    Mis Artefactos
-                </button>
-            </div>
+          {/* Ownership Toggle */}
+          <div className="bg-gray-100 dark:bg-[#0F1419] p-1 rounded-xl flex items-center border border-gray-200 dark:border-[#6C757D]/20">
+            <button
+              onClick={() => setOwnershipFilter('all')}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${ownershipFilter === 'all'
+                  ? 'bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white'
+                }`}
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setOwnershipFilter('mine')}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${ownershipFilter === 'mine'
+                  ? 'bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white'
+                }`}
+            >
+              Mis Artefactos
+            </button>
+          </div>
 
-            {/* Search */}
-            <div className="relative w-full md:w-80">
+          {/* Search */}
+          <div className="relative w-full md:w-80">
             <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#6C757D]"
-                size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#6C757D]"
+              size={18}
             />
             <input
-                type="text"
-                placeholder="Buscar por título..."
-                className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl py-2 pl-10 pr-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 transition-colors placeholder-gray-400 dark:placeholder-gray-600"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+              type="text"
+              placeholder="Buscar por título..."
+              className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl py-2 pl-10 pr-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 transition-colors placeholder-gray-400 dark:placeholder-gray-600"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
-            </div>
+          </div>
         </div>
 
         {/* Tabs & View Toggle */}
@@ -260,11 +268,14 @@ export default function ArtifactsList({
               <button
                 key={tab.id}
                 onClick={() => setFilterStatus(tab.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors border ${
-                  filterStatus === tab.id
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors border ${filterStatus === tab.id
                     ? "bg-[#00D4B3]/10 text-[#00D4B3] border-[#00D4B3]/20"
                     : "text-gray-500 dark:text-[#94A3B8] border-transparent hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1E2329]"
-                }`}
+                  }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors border ${filterStatus === tab.id
+                  ? "bg-[#00D4B3]/10 text-[#00D4B3] border-[#00D4B3]/20"
+                  : "text-[#94A3B8] border-transparent hover:text-white hover:bg-[#1E2329]"
+                  }`}
               >
                 {tab.label}
               </button>
@@ -295,42 +306,42 @@ export default function ArtifactsList({
         <EmptyState />
       ) : (
         <>
-            <div
+          <div
             className={
-                viewMode === "grid"
+              viewMode === "grid"
                 ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
                 : "space-y-4"
             }
-            >
+          >
             {paginatedArtifacts.map((art) => (
-                <ArtifactCard key={art.id} artifact={art} viewMode={viewMode} />
+              <ArtifactCard key={art.id} artifact={art} viewMode={viewMode} />
             ))}
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex justify-center items-center gap-2 mt-8 pt-4 border-t border-gray-200 dark:border-white/5">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg bg-white dark:bg-[#151A21] border border-gray-200 dark:border-white/10 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft size={18} />
+              </button>
+
+              <span className="text-sm text-gray-500 dark:text-slate-400 font-medium">
+                Página {currentPage} de {totalPages}
+              </span>
+
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-lg bg-white dark:bg-[#151A21] border border-gray-200 dark:border-white/10 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight size={18} />
+              </button>
             </div>
-
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-                <div className="flex justify-center items-center gap-2 mt-8 pt-4 border-t border-gray-200 dark:border-white/5">
-                    <button
-                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                        disabled={currentPage === 1}
-                        className="p-2 rounded-lg bg-white dark:bg-[#151A21] border border-gray-200 dark:border-white/10 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                        <ChevronLeft size={18} />
-                    </button>
-                    
-                    <span className="text-sm text-gray-500 dark:text-slate-400 font-medium">
-                        Página {currentPage} de {totalPages}
-                    </span>
-
-                    <button
-                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                        disabled={currentPage === totalPages}
-                        className="p-2 rounded-lg bg-white dark:bg-[#151A21] border border-gray-200 dark:border-white/10 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                        <ChevronRight size={18} />
-                    </button>
-                </div>
-            )}
+          )}
         </>
       )}
     </div>
@@ -361,20 +372,20 @@ function EmptyState() {
 function getArtifactProgress(artifact: Artifact) {
   // 1. Rejected State
   if (artifact.state === 'REJECTED') {
-      return { percent: 100, color: "bg-red-500", animated: false };
+    return { percent: 100, color: "bg-red-500", animated: false };
   }
 
   // 2. Calculating Progress based on Sub-Steps
   // If the Base Artifact is Approved, we check deeper.
   if (artifact.state === 'APPROVED') {
-      if (artifact.plan_state === 'STEP_APPROVED') {
-          return { percent: 60, color: "bg-indigo-500", animated: false }; // Plan Done (Step 3) -> Ready for Curation
-      }
-      if (artifact.syllabus_state === 'STEP_APPROVED') {
-          return { percent: 40, color: "bg-blue-500", animated: false }; // Syllabus Done (Step 2) -> Ready for Plan
-      }
-      // Just Base Approved (Step 1)
-      return { percent: 20, color: "bg-[#00D4B3]", animated: false };
+    if (artifact.plan_state === 'STEP_APPROVED') {
+      return { percent: 60, color: "bg-indigo-500", animated: false }; // Plan Done (Step 3) -> Ready for Curation
+    }
+    if (artifact.syllabus_state === 'STEP_APPROVED') {
+      return { percent: 40, color: "bg-blue-500", animated: false }; // Syllabus Done (Step 2) -> Ready for Plan
+    }
+    // Just Base Approved (Step 1)
+    return { percent: 20, color: "bg-[#00D4B3]", animated: false };
   }
 
   // 3. Early States (Pre-Approval)
@@ -391,7 +402,7 @@ function getArtifactProgress(artifact: Artifact) {
     case "ESCALATED":
       return { percent: 80, color: "bg-orange-500", animated: false };
     case "IN_PROCESS":
-        return { percent: 15, color: "bg-blue-500", animated: true };
+      return { percent: 15, color: "bg-blue-500", animated: true };
     default:
       return { percent: 5, color: "bg-gray-300", animated: false };
   }
@@ -404,7 +415,9 @@ function ArtifactCard({
   artifact: Artifact;
   viewMode: "grid" | "list";
 }) {
-  const status = statusConfig[artifact.state] || statusConfig.DRAFT;
+  // Determine display status - prioritize PRODUCTION_COMPLETE if all videos done
+  const displayState = artifact.production_complete ? 'PRODUCTION_COMPLETE' : artifact.state;
+  const status = statusConfig[displayState] || statusConfig.DRAFT;
   const StatusIcon = status.icon;
   const progress = getArtifactProgress(artifact);
 
@@ -452,14 +465,14 @@ function ArtifactCard({
                 .trim()}
             </h4>
             <div className="flex items-center gap-3">
-                <p className="text-xs text-gray-500 dark:text-[#94A3B8] line-clamp-1 max-w-[200px]">{descText}</p>
-                 {/* Mini Progress for List */}
-                <div className="h-1.5 w-24 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden flex-shrink-0">
-                    <div 
-                        className={`h-full ${progress.color} transition-all duration-500 ${progress.animated ? 'animate-pulse' : ''}`} 
-                        style={{ width: `${progress.percent}%` }}
-                    />
-                </div>
+              <p className="text-xs text-gray-500 dark:text-[#94A3B8] line-clamp-1 max-w-[200px]">{descText}</p>
+              {/* Mini Progress for List */}
+              <div className="h-1.5 w-24 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden flex-shrink-0">
+                <div
+                  className={`h-full ${progress.color} transition-all duration-500 ${progress.animated ? 'animate-pulse' : ''}`}
+                  style={{ width: `${progress.percent}%` }}
+                />
+              </div>
             </div>
           </div>
 
@@ -471,7 +484,7 @@ function ArtifactCard({
                 size={12}
                 className={
                   status.label.includes("Generando") ||
-                  status.label.includes("Validando")
+                    status.label.includes("Validando")
                     ? "animate-spin"
                     : ""
                 }
@@ -504,7 +517,7 @@ function ArtifactCard({
   return (
     <Link href={`/admin/artifacts/${artifact.id}`} className="block h-full">
       <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-5 hover:border-gray-300 dark:hover:border-[#6C757D]/30 transition-all group flex flex-col h-full cursor-pointer relative shadow-sm dark:shadow-none">
-        
+
         {/* Header: Status Badge & Menu */}
         <div className="flex items-start justify-between mb-4">
           <div
@@ -515,7 +528,7 @@ function ArtifactCard({
                 size={12}
                 className={
                   status.label.includes("Generando") ||
-                  status.label.includes("Validando")
+                    status.label.includes("Validando")
                     ? "animate-spin"
                     : ""
                 }
@@ -542,18 +555,18 @@ function ArtifactCard({
               .trim()}
           </h3>
           <p className="text-sm text-gray-500 dark:text-[#94A3B8] line-clamp-3 mb-4">{descText}</p>
-          
+
           {/* Progress Bar */}
           <div className="w-full">
             <div className="flex justify-between text-[10px] text-gray-400 dark:text-[#6C757D] mb-1.5 uppercase tracking-wider font-semibold">
-                <span>Progreso</span>
-                <span>{progress.percent}%</span>
+              <span>Progreso</span>
+              <span>{progress.percent}%</span>
             </div>
             <div className="h-1.5 w-full bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
-                <div 
-                    className={`h-full ${progress.color} transition-all duration-700 ease-out ${progress.animated ? 'animate-[pulse_2s_infinite]' : ''}`}
-                    style={{ width: `${progress.percent}%` }}
-                />
+              <div
+                className={`h-full ${progress.color} transition-all duration-700 ease-out ${progress.animated ? 'animate-[pulse_2s_infinite]' : ''}`}
+                style={{ width: `${progress.percent}%` }}
+              />
             </div>
           </div>
         </div>
@@ -569,6 +582,14 @@ function ArtifactCard({
             </span>
           </div>
           <span className="text-xs text-gray-400 dark:text-[#6C757D]">{timeDisplay}</span>
+          <div className="flex items-center gap-3">
+            {artifact.production_status && artifact.production_status.total > 0 && (
+              <span className={`text-xs ${artifact.production_complete ? 'text-emerald-400' : 'text-[#6C757D]'}`}>
+                🎬 {artifact.production_status.completed}/{artifact.production_status.total}
+              </span>
+            )}
+            <span className="text-xs text-[#6C757D]">{timeDisplay}</span>
+          </div>
         </div>
       </div>
     </Link>

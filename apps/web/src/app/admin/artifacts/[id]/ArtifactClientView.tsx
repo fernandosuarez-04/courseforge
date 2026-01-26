@@ -13,6 +13,7 @@ import { SyllabusGenerationContainer } from '@/domains/syllabus/components/Sylla
 import { InstructionalPlanGenerationContainer } from '@/domains/plan/components/InstructionalPlanGenerationContainer';
 import { SourcesCurationGenerationContainer } from '@/domains/curation/components/SourcesCurationGenerationContainer';
 import { MaterialsForm } from '@/domains/materials/components/MaterialsForm';
+import { VisualProductionContainer } from '@/domains/materials/components/VisualProductionContainer';
 
 export default function ArtifactClientView({ artifact }: { artifact: any }) {
     const [activeTab, setActiveTab] = useState<'content' | 'validation'>('content');
@@ -177,7 +178,7 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
             {/* STEPPER */}
             <div className="px-8 py-6 bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl flex items-center justify-between overflow-x-auto">
                 <StepItem step={1} label="Base" active={currentStep === 1} onClick={() => setCurrentStep(1)} icon={<Target size={18} />} done={reviewState === 'approved'} />
-                
+
                 <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${reviewState === 'approved' ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
 
                 <StepItem
@@ -201,9 +202,9 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                     disabled={!syllabusApproved}
                     done={planApproved}
                 />
-                
+
                 <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${planApproved ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
-                
+
                 <StepItem
                     step={4}
                     label="Fuentes"
@@ -213,9 +214,9 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                     icon={<FileText size={18} />}
                     done={curationApproved}
                 />
-                
+
                 <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${curationApproved ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
-                
+
                 <StepItem
                     step={5}
                     label="Materiales"
@@ -225,10 +226,17 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                     disabled={!curationApproved}
                     done={artifact.materials_state === 'PHASE3_APPROVED'}
                 />
-                
-                <div className="h-0.5 flex-1 mx-4 rounded-full bg-gray-200 dark:bg-[#2D333B] relative top-[-10px]" />
-                
-                <StepItem step={6} label="Slides" disabled icon={<Target size={18} />} />
+
+                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${artifact.materials_state === 'PHASE3_APPROVED' ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
+
+                <StepItem
+                    step={6}
+                    label="Producción"
+                    active={currentStep === 6}
+                    onClick={() => setCurrentStep(6)}
+                    icon={<Target size={18} />}
+                    disabled={artifact.materials_state !== 'PHASE3_APPROVED'}
+                />
             </div>
 
             {/* CONTENT SWITCHER */}
@@ -246,7 +254,7 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                         ))}
                     </div>
 
-                            {activeTab === 'content' ? (
+                    {activeTab === 'content' ? (
                         <div className="space-y-6">
                             <SectionCard
                                 title="Nombres del Curso"
@@ -372,81 +380,81 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                                     onChange={(e) => setFeedback(e.target.value)}
                                     disabled={reviewState === 'approved' || isRegenerating}
                                 />
-                                
+
                                 <div className="flex items-center gap-4 mt-4">
-                                {reviewState === 'pending' && (
-                                    <>
-                                        <button
-                                            onClick={async () => {
-                                                try {
-                                                    const res = await updateArtifactStatusAction(artifact.id, 'APPROVED');
-                                                    if (res.success) {
-                                                        setReviewState('approved');
-                                                        showToast('Fase 1 Aprobada.', 'success');
-                                                        router.refresh();
-                                                    } else {
-                                                        showToast('Error al actualizar.', 'error');
+                                    {reviewState === 'pending' && (
+                                        <>
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        const res = await updateArtifactStatusAction(artifact.id, 'APPROVED');
+                                                        if (res.success) {
+                                                            setReviewState('approved');
+                                                            showToast('Fase 1 Aprobada.', 'success');
+                                                            router.refresh();
+                                                        } else {
+                                                            showToast('Error al actualizar.', 'error');
+                                                        }
+                                                    } catch (e) {
+                                                        console.error(e);
+                                                        showToast('Error de conexión.', 'error');
                                                     }
-                                                } catch (e) {
-                                                    console.error(e);
-                                                    showToast('Error de conexión.', 'error');
-                                                }
-                                            }}
-                                            className="flex-1 bg-[#00D4B3]/10 hover:bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/20 py-3 rounded-xl font-medium transition-all"
-                                        >
-                                            Aprobar Fase 1
-                                        </button>
-                                        <button
-                                            onClick={async () => {
-                                                try {
-                                                    const res = await updateArtifactStatusAction(artifact.id, 'REJECTED');
-                                                    if (res.success) {
-                                                        setReviewState('rejected');
-                                                        showToast('Fase 1 Rechazada.', 'info');
-                                                        router.refresh();
-                                                    } else {
-                                                        showToast('Error al actualizar.', 'error');
+                                                }}
+                                                className="flex-1 bg-[#00D4B3]/10 hover:bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/20 py-3 rounded-xl font-medium transition-all"
+                                            >
+                                                Aprobar Fase 1
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        const res = await updateArtifactStatusAction(artifact.id, 'REJECTED');
+                                                        if (res.success) {
+                                                            setReviewState('rejected');
+                                                            showToast('Fase 1 Rechazada.', 'info');
+                                                            router.refresh();
+                                                        } else {
+                                                            showToast('Error al actualizar.', 'error');
+                                                        }
+                                                    } catch (e) {
+                                                        console.error(e);
+                                                        showToast('Error de conexión.', 'error');
                                                     }
-                                                } catch (e) {
-                                                    console.error(e);
-                                                    showToast('Error de conexión.', 'error');
-                                                }
-                                            }}
-                                            className="flex-1 bg-[#EF4444]/10 hover:bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/20 py-3 rounded-xl font-medium transition-all"
+                                                }}
+                                                className="flex-1 bg-[#EF4444]/10 hover:bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/20 py-3 rounded-xl font-medium transition-all"
+                                            >
+                                                Rechazar Fase 1
+                                            </button>
+                                        </>
+                                    )}
+
+                                    {reviewState === 'rejected' && (
+                                        <button
+                                            onClick={handleRegenerate}
+                                            disabled={isRegenerating}
+                                            className="w-full bg-[#EF4444] hover:bg-[#cc3a3a] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
                                         >
-                                            Rechazar Fase 1
+                                            {isRegenerating ? <RotateCw className="animate-spin" /> : <RotateCw />}
+                                            {isRegenerating ? 'Regenerando...' : 'Regenerar Contenido con IA'}
                                         </button>
-                                    </>
-                                )}
+                                    )}
 
-                                {reviewState === 'rejected' && (
-                                    <button
-                                        onClick={handleRegenerate}
-                                        disabled={isRegenerating}
-                                        className="w-full bg-[#EF4444] hover:bg-[#cc3a3a] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
-                                    >
-                                        {isRegenerating ? <RotateCw className="animate-spin" /> : <RotateCw />}
-                                        {isRegenerating ? 'Regenerando...' : 'Regenerar Contenido con IA'}
-                                    </button>
-                                )}
-
-                                {reviewState === 'approved' && (
-                                    <div className="w-full flex gap-4">
-                                        <div className="flex-1 bg-[#00D4B3]/20 text-[#00D4B3] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
-                                            <CheckCircle2 /> Fase 1 Aprobada
+                                    {reviewState === 'approved' && (
+                                        <div className="w-full flex gap-4">
+                                            <div className="flex-1 bg-[#00D4B3]/20 text-[#00D4B3] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
+                                                <CheckCircle2 /> Fase 1 Aprobada
+                                            </div>
+                                            <button
+                                                onClick={() => setCurrentStep(2)}
+                                                className="flex-1 bg-[#1F5AF6] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#1F5AF6]/20"
+                                            >
+                                                Continuar a Estructura
+                                            </button>
                                         </div>
-                                        <button
-                                            onClick={() => setCurrentStep(2)}
-                                            className="flex-1 bg-[#1F5AF6] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#1F5AF6]/20"
-                                        >
-                                            Continuar a Estructura
-                                        </button>
-                                    </div>
-                                )}
+                                    )}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                                ) : (
+                    ) : (
                         <div className="space-y-6">
                             {/* SEARCH QUERIES */}
                             {artifact.generation_metadata?.search_queries && artifact.generation_metadata.search_queries.length > 0 && (
@@ -476,8 +484,8 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                             </div>
                         </div>
                     )}
-                    </>
-                ) : currentStep === 2 ? (
+                </>
+            ) : currentStep === 2 ? (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                     <SyllabusGenerationContainer
                         artifactId={artifact.id}
@@ -497,12 +505,15 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                     <SourcesCurationGenerationContainer
                         artifactId={artifact.id}
-                        onNext={() => setCurrentStep(5)}
                     />
                 </div>
             ) : currentStep === 5 ? (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                     <MaterialsForm artifactId={artifact.id} />
+                </div>
+            ) : currentStep === 6 ? (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                    <VisualProductionContainer artifactId={artifact.id} />
                 </div>
             ) : null}
         </div>
@@ -529,10 +540,10 @@ function StepItem({ step, label, active, onClick, icon, disabled, done }: any) {
             className={`flex flex-col items-center gap-2 group ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}`}
         >
             <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all border-2 relative 
-                ${active 
-                    ? 'border-blue-600 text-blue-600 dark:border-[#1F5AF6] dark:text-[#1F5AF6] bg-white dark:bg-[#0F1419]' 
-                    : done 
-                        ? 'border-green-500 text-green-500 dark:border-[#00D4B3] dark:text-[#00D4B3] bg-green-50 dark:bg-[#00D4B3]/10' 
+                ${active
+                    ? 'border-blue-600 text-blue-600 dark:border-[#1F5AF6] dark:text-[#1F5AF6] bg-white dark:bg-[#0F1419]'
+                    : done
+                        ? 'border-green-500 text-green-500 dark:border-[#00D4B3] dark:text-[#00D4B3] bg-green-50 dark:bg-[#00D4B3]/10'
                         : 'border-gray-200 dark:border-[#2D333B] text-gray-400 dark:text-[#6C757D] bg-white dark:bg-[#0F1419]'
                 }`}>
                 {done ? <CheckCircle2 size={16} /> : icon}

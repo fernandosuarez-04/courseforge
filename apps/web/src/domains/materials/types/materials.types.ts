@@ -101,6 +101,41 @@ export interface MaterialComponent {
     validation_errors: string[];
     generated_at: string;
     iteration_number: number;
+    assets: MaterialAssets;
+}
+
+// Estado del workflow de producción visual (Fase 6)
+export type ProductionStatus =
+    | 'PENDING'           // Listo para iniciar producción
+    | 'IN_PROGRESS'       // En proceso de creación
+    | 'DECK_READY'        // Deck creado, pendiente de exportar
+    | 'EXPORTED'          // PNG exportado
+    | 'COMPLETED';        // Todo listo
+
+// Checklist de DoD para producción visual
+export interface ProductionDodChecklist {
+    has_slides_url: boolean;      // URL de Gamma guardada
+    has_video_url: boolean;       // URL de video B-roll
+    has_screencast_url: boolean;  // URL de screencast (si aplica)
+    has_b_roll_prompts: boolean;  // Prompts generados
+    has_final_video_url: boolean; // URL del video final de producción
+}
+
+export interface MaterialAssets {
+    // Campos existentes
+    slides_url?: string;
+    b_roll_prompts?: string;
+    video_url?: string;
+    screencast_url?: string;
+    notes?: string;
+    // Campo de video final (post-producción)
+    final_video_url?: string;
+    // Campos de producción visual (Fase 6)
+    production_status?: ProductionStatus;
+    gamma_deck_id?: string;
+    png_export_path?: string;
+    dod_checklist?: ProductionDodChecklist;
+    updated_at?: string;
 }
 
 // Lección con materiales
