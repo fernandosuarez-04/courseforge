@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
-import { GoogleGenAI } from '@google/genai';
 import { SYSTEM_PROMPT, COMPUTER_USE_PROMPT } from '@/lib/lia-app-context';
 import { getLiaDBContext, generateDBContextSummary } from '@/lib/lia-db-context';
 
@@ -221,7 +220,7 @@ export async function POST(req: NextRequest) {
     // Model selection: Use the model from DB settings
     const modelName = settings.model_name;
 
-    // Configure Gemini Client (fallback to GOOGLE_API_KEY for compatibility)
+    // Configure API key (fallback to GOOGLE_API_KEY for compatibility)
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
 
     // Debug: Log API key status (not the actual key for security)
@@ -235,7 +234,43 @@ export async function POST(req: NextRequest) {
       console.error('Lia API - CRITICAL: No API key found');
       return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
     }
-    const client = new GoogleGenAI({ apiKey });
+
+    // Helper function to call Gemini API directly via REST (bypassing SDK issues)
+    const callGeminiREST = async (model: string, prompt: string, config: any): Promise<{ text: string; groundingMetadata?: any }> => {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+      const body: any = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: config.temperature || 0.7,
+        }
+      };
+
+      // Add Google Search tool if configured
+      if (config.tools) {
+        body.tools = config.tools;
+      }
+
+      console.log('Lia API - Calling REST API directly...');
+
+      const restResponse = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (!restResponse.ok) {
+        const errorText = await restResponse.text();
+        console.error('Lia API - REST API error:', restResponse.status, errorText);
+        throw new Error(`Gemini API error: ${restResponse.status} - ${errorText}`);
+      }
+
+      const data = await restResponse.json();
+      return {
+        text: data.candidates?.[0]?.content?.parts?.[0]?.text || '',
+        groundingMetadata: data.candidates?.[0]?.groundingMetadata
+      };
+    };
 
     // Build conversation history
     const lastMessage = messages[messages.length - 1];
@@ -744,29 +779,17 @@ ${currentMessageText}
 
 --- TU RESPUESTA ---`;
 
-    // Generate response using SAME pattern as working background functions
-    let response;
+    // Generate response using direct REST API call (bypassing SDK issues in Next.js API routes)
     let responseText = '';
+    let groundingMetadata: any = null;
 
     try {
-      console.log('Lia API - Calling generateContent with string format...');
-
-      response = await client.models.generateContent({
-        model: modelName,
-        contents: fullPrompt,  // Simple string like background functions
-        config: config
-      });
-
-      responseText = response.text || '';
+      const result = await callGeminiREST(modelName, fullPrompt, config);
+      responseText = result.text;
+      groundingMetadata = result.groundingMetadata;
       console.log('Lia API - Response received, length:', responseText.length);
     } catch (apiError: any) {
-      console.error('Lia API - Generation failed:', {
-        name: apiError?.name,
-        message: apiError?.message,
-        status: apiError?.status,
-        code: apiError?.code,
-        cause: apiError?.cause
-      });
+      console.error('Lia API - Generation failed:', apiError.message);
       throw apiError;
     }
 
@@ -854,8 +877,7 @@ ${currentMessageText}
       }
     }
 
-    // Standard text response
-    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+    // Standard text response - use groundingMetadata from REST response
     let sources: { title: string; url: string }[] = [];
 
     if (groundingMetadata?.groundingChunks) {
