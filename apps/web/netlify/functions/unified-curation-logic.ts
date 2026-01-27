@@ -187,27 +187,21 @@ STRICTLY AVOID:
 - Content in languages not matching the course
 
 ═══════════════════════════════════════════════════════════════
-*** OUTPUT FORMAT ***
+*** OUTPUT FORMAT - CRITICAL ***
 ═══════════════════════════════════════════════════════════════
 
-Return ONLY valid JSON:
-{
-  "lessons": [
-    {
-      "lesson_id": "...",
-      "lesson_title": "...",
-      "sources": [
-        {
-          "url": "FULL URL",
-          "title": "Article title",
-          "rationale": "How this relates to ${courseTitle}",
-          "key_topics_covered": ["topic1", "topic2"],
-          "estimated_quality": 8
-        }
-      ]
-    }
-  ]
-}
+⚠️ YOU MUST RETURN ONLY VALID JSON. NO explanations, NO markdown, NO extra text.
+⚠️ Start your response with { and end with }
+⚠️ Do NOT wrap in \`\`\`json code blocks
+
+EXACT FORMAT:
+{"lessons":[{"lesson_id":"EXACT_ID_FROM_INPUT","lesson_title":"EXACT_TITLE_FROM_INPUT","sources":[{"url":"https://full.url.here","title":"Article title","rationale":"Why relevant","key_topics_covered":["topic1","topic2"],"estimated_quality":8}]}]}
+
+RULES:
+1. Use the EXACT lesson_id provided in the input (e.g., "les-1-1", "les-2-3")
+2. Each lesson MUST have 1-2 sources with full HTTPS URLs
+3. URLs MUST be real, complete, and accessible (no shortened links)
+4. Output MUST parse as valid JSON - no trailing commas, proper escaping
 
 CRITICAL: Every source MUST be relevant to "${courseTitle}". Reject unrelated results.
 `;
@@ -369,7 +363,7 @@ ${Array.isArray(learningObjectives) && learningObjectives.length > 0 ? `LEARNING
 
     // 3. Process Lessons in Batches
     const curatedResults: CurationRowInsert[] = [];
-    const maxRetries = 2;
+    const maxRetries = 3; // Increased retries for better coverage
 
     let remainingLessons = [...lessonsToProcess];
     let attempt = 0;
@@ -468,29 +462,43 @@ SEARCH STRATEGY:
                 if (!responseText) {
                     console.warn(`[Lesson Curation] Empty response. Using grounding URLs as fallback.`);
 
-                    // Fallback: assign grounding URLs to lessons (limit to SOURCES_PER_LESSON)
+                    // Fallback: assign grounding URLs to lessons (validate before adding)
                     if (groundingUrls.length > 0) {
                         for (let j = 0; j < batch.length; j++) {
                             const lesson = batch[j];
-                            // Only add up to SOURCES_PER_LESSON per lesson
-                            const sourcesToAdd = Math.min(SOURCES_PER_LESSON, groundingUrls.length);
-                            for (let s = 0; s < sourcesToAdd; s++) {
-                                const source = groundingUrls[s];
-                                curatedResults.push({
-                                    curation_id: curationId,
-                                    lesson_id: lesson.lesson_id,
-                                    lesson_title: lesson.lesson_title,
-                                    component: 'LESSON_SOURCE',
-                                    is_critical: true,
-                                    source_ref: source.uri,
-                                    source_title: source.title,
-                                    source_rationale: 'Fuente de Google Search (respuesta vacía del modelo)',
-                                    url_status: 'OK',
-                                    apta: true,
-                                    cobertura_completa: true,
-                                    auto_evaluated: false,
-                                    auto_reason: `Grounding fallback (${activeModel})`
-                                });
+                            let foundValidSource = false;
+
+                            // Try each grounding URL until we find a valid one
+                            for (const source of groundingUrls) {
+                                if (foundValidSource) break;
+
+                                const validation = await validateUrlWithContent(source.uri);
+                                if (validation.isValid) {
+                                    curatedResults.push({
+                                        curation_id: curationId,
+                                        lesson_id: lesson.lesson_id,
+                                        lesson_title: lesson.lesson_title,
+                                        component: 'LESSON_SOURCE',
+                                        is_critical: true,
+                                        source_ref: source.uri,
+                                        source_title: source.title,
+                                        source_rationale: 'Fuente de Google Search (respuesta vacía del modelo)',
+                                        url_status: 'OK',
+                                        apta: true,
+                                        cobertura_completa: true,
+                                        auto_evaluated: true,
+                                        auto_reason: `Grounding fallback validated (${activeModel})`
+                                    });
+                                    foundValidSource = true;
+                                    console.log(`[Lesson Curation] ✓ ${lesson.lesson_id} (grounding): ${source.title}`);
+                                } else {
+                                    console.log(`[Lesson Curation] ✗ ${lesson.lesson_id} grounding failed: ${source.uri.substring(0, 50)}... - ${validation.reason}`);
+                                }
+                            }
+
+                            if (!foundValidSource) {
+                                console.log(`[Lesson Curation] No valid grounding URL for ${lesson.lesson_id}`);
+                                failedInThisPass.push(lesson);
                             }
                         }
                         continue;
@@ -503,42 +511,77 @@ SEARCH STRATEGY:
                 // Parse JSON from response
                 let parsed: { lessons: LessonResult[] };
                 try {
-                    let jsonStr = responseText;
-                    const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
-                    if (jsonMatch) {
-                        jsonStr = jsonMatch[1].trim();
+                    let jsonStr = responseText.trim();
+
+                    // Step 1: Remove markdown code blocks if present
+                    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+                    if (codeBlockMatch) {
+                        jsonStr = codeBlockMatch[1].trim();
+                    }
+
+                    // Step 2: Find JSON object - look for {"lessons" pattern
+                    const lessonsMatch = jsonStr.match(/\{"lessons"\s*:\s*\[[\s\S]*\]\s*\}/);
+                    if (lessonsMatch) {
+                        jsonStr = lessonsMatch[0];
                     } else {
-                        const jsonStart = responseText.indexOf('{');
-                        const jsonEnd = responseText.lastIndexOf('}');
+                        // Fallback: find first { to last }
+                        const jsonStart = jsonStr.indexOf('{');
+                        const jsonEnd = jsonStr.lastIndexOf('}');
                         if (jsonStart !== -1 && jsonEnd > jsonStart) {
-                            jsonStr = responseText.substring(jsonStart, jsonEnd + 1);
+                            jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
                         }
                     }
+
+                    // Step 3: Clean common JSON issues
+                    jsonStr = jsonStr.replace(/,\s*}/g, '}'); // Remove trailing commas
+                    jsonStr = jsonStr.replace(/,\s*]/g, ']'); // Remove trailing commas in arrays
+
                     parsed = JSON.parse(jsonStr);
-                } catch (parseError) {
-                    console.error(`[Lesson Curation] JSON parse error. Using grounding fallback.`);
+
+                    // Validate structure
+                    if (!parsed.lessons || !Array.isArray(parsed.lessons)) {
+                        throw new Error('Invalid structure: missing lessons array');
+                    }
+                } catch (parseError: any) {
+                    console.error(`[Lesson Curation] JSON parse error: ${parseError.message}`);
+                    console.error(`[Lesson Curation] Raw response (first 500 chars): ${responseText.substring(0, 500)}`);
+                    console.log(`[Lesson Curation] Using grounding fallback with validation.`);
                     if (groundingUrls.length > 0) {
                         for (let j = 0; j < batch.length; j++) {
                             const lesson = batch[j];
-                            // Only add up to SOURCES_PER_LESSON per lesson
-                            const sourcesToAdd = Math.min(SOURCES_PER_LESSON, groundingUrls.length);
-                            for (let s = 0; s < sourcesToAdd; s++) {
-                                const source = groundingUrls[s];
-                                curatedResults.push({
-                                    curation_id: curationId,
-                                    lesson_id: lesson.lesson_id,
-                                    lesson_title: lesson.lesson_title,
-                                    component: 'LESSON_SOURCE',
-                                    is_critical: true,
-                                    source_ref: source.uri,
-                                    source_title: source.title,
-                                    source_rationale: 'Fuente de Google Search (error de parseo)',
-                                    url_status: 'OK',
-                                    apta: true,
-                                    cobertura_completa: true,
-                                    auto_evaluated: false,
-                                    auto_reason: `Grounding fallback (${activeModel})`
-                                });
+                            let foundValidSource = false;
+
+                            // Try each grounding URL until we find a valid one
+                            for (const source of groundingUrls) {
+                                if (foundValidSource) break;
+
+                                const validation = await validateUrlWithContent(source.uri);
+                                if (validation.isValid) {
+                                    curatedResults.push({
+                                        curation_id: curationId,
+                                        lesson_id: lesson.lesson_id,
+                                        lesson_title: lesson.lesson_title,
+                                        component: 'LESSON_SOURCE',
+                                        is_critical: true,
+                                        source_ref: source.uri,
+                                        source_title: source.title,
+                                        source_rationale: 'Fuente de Google Search (error de parseo)',
+                                        url_status: 'OK',
+                                        apta: true,
+                                        cobertura_completa: true,
+                                        auto_evaluated: true,
+                                        auto_reason: `Grounding fallback validated (${activeModel})`
+                                    });
+                                    foundValidSource = true;
+                                    console.log(`[Lesson Curation] ✓ ${lesson.lesson_id} (grounding/parse-error): ${source.title}`);
+                                } else {
+                                    console.log(`[Lesson Curation] ✗ ${lesson.lesson_id} grounding failed: ${source.uri.substring(0, 50)}... - ${validation.reason}`);
+                                }
+                            }
+
+                            if (!foundValidSource) {
+                                console.log(`[Lesson Curation] No valid grounding URL for ${lesson.lesson_id} (parse error)`);
+                                failedInThisPass.push(lesson);
                             }
                         }
                         continue;
@@ -570,27 +613,41 @@ SEARCH STRATEGY:
                     }
 
                     if (!lessonResult?.sources || lessonResult.sources.length === 0) {
-                        console.warn(`[Lesson Curation] No sources for ${lesson.lesson_id}. Using grounding.`);
-                        // Use a different grounding URL for each lesson to avoid duplicates
+                        console.warn(`[Lesson Curation] No sources for ${lesson.lesson_id}. Trying grounding with validation.`);
+                        // Try grounding URLs with validation
+                        let foundValidGrounding = false;
                         if (groundingUrls.length > 0) {
-                            const sourceIdx = lessonIdx % groundingUrls.length;
-                            const source = groundingUrls[sourceIdx];
-                            curatedResults.push({
-                                curation_id: curationId,
-                                lesson_id: lesson.lesson_id,
-                                lesson_title: lesson.lesson_title,
-                                component: 'LESSON_SOURCE',
-                                is_critical: true,
-                                source_ref: source.uri,
-                                source_title: source.title,
-                                source_rationale: 'Fuente de Google Search (sin resultado específico)',
-                                url_status: 'OK',
-                                apta: true,
-                                cobertura_completa: true,
-                                auto_evaluated: false,
-                                auto_reason: `Grounding fallback (${activeModel})`
-                            });
-                        } else {
+                            // Start from a different index for each lesson to distribute URLs
+                            for (let gIdx = 0; gIdx < groundingUrls.length; gIdx++) {
+                                const sourceIdx = (lessonIdx + gIdx) % groundingUrls.length;
+                                const source = groundingUrls[sourceIdx];
+
+                                const validation = await validateUrlWithContent(source.uri);
+                                if (validation.isValid) {
+                                    curatedResults.push({
+                                        curation_id: curationId,
+                                        lesson_id: lesson.lesson_id,
+                                        lesson_title: lesson.lesson_title,
+                                        component: 'LESSON_SOURCE',
+                                        is_critical: true,
+                                        source_ref: source.uri,
+                                        source_title: source.title,
+                                        source_rationale: 'Fuente de Google Search (sin resultado específico)',
+                                        url_status: 'OK',
+                                        apta: true,
+                                        cobertura_completa: true,
+                                        auto_evaluated: true,
+                                        auto_reason: `Grounding fallback validated (${activeModel})`
+                                    });
+                                    foundValidGrounding = true;
+                                    console.log(`[Lesson Curation] ✓ ${lesson.lesson_id} (grounding/no-sources): ${source.title}`);
+                                    break;
+                                } else {
+                                    console.log(`[Lesson Curation] ✗ ${lesson.lesson_id} grounding failed: ${source.uri.substring(0, 50)}... - ${validation.reason}`);
+                                }
+                            }
+                        }
+                        if (!foundValidGrounding) {
                             failedInThisPass.push(lesson);
                         }
                         continue;
@@ -630,10 +687,15 @@ SEARCH STRATEGY:
                             console.log(`[Lesson Curation] ✓ ${lesson.lesson_id}: ${source.title}`);
                         } else {
                             console.log(`[Lesson Curation] ✗ ${lesson.lesson_id}: ${source.url} - ${validation.reason}`);
+                        }
+                    }
 
-                            // Try grounding URL as fallback
-                            if (groundingUrls.length > 0 && validSourceCount === 0) {
-                                const groundingSource = groundingUrls[0];
+                    // If no valid sources from model, try grounding URLs
+                    if (validSourceCount === 0 && groundingUrls.length > 0) {
+                        console.log(`[Lesson Curation] No valid model sources for ${lesson.lesson_id}, trying grounding URLs...`);
+                        for (const groundingSource of groundingUrls) {
+                            const groundingValidation = await validateUrlWithContent(groundingSource.uri);
+                            if (groundingValidation.isValid) {
                                 curatedResults.push({
                                     curation_id: curationId,
                                     lesson_id: lesson.lesson_id,
@@ -642,14 +704,18 @@ SEARCH STRATEGY:
                                     is_critical: true,
                                     source_ref: groundingSource.uri,
                                     source_title: groundingSource.title,
-                                    source_rationale: `Fuente alternativa de Google Search (URL original falló: ${validation.reason})`,
+                                    source_rationale: `Fuente alternativa de Google Search (URLs del modelo fallaron)`,
                                     url_status: 'OK',
                                     apta: true,
                                     cobertura_completa: true,
-                                    auto_evaluated: false,
-                                    auto_reason: `Grounding fallback (${activeModel})`
+                                    auto_evaluated: true,
+                                    auto_reason: `Grounding fallback validated (${activeModel})`
                                 });
                                 validSourceCount++;
+                                console.log(`[Lesson Curation] ✓ ${lesson.lesson_id} (grounding/model-failed): ${groundingSource.title}`);
+                                break;
+                            } else {
+                                console.log(`[Lesson Curation] ✗ ${lesson.lesson_id} grounding also failed: ${groundingSource.uri.substring(0, 50)}... - ${groundingValidation.reason}`);
                             }
                         }
                     }
@@ -679,6 +745,22 @@ SEARCH STRATEGY:
         if (remainingLessons.length === 0) break;
     }
 
+    // Summary logging
+    const lessonsWithSources = new Set(curatedResults.map(r => r.lesson_id));
+    const lessonsWithoutSources = lessonsToProcess.filter(l => !lessonsWithSources.has(l.lesson_id));
+
+    console.log(`[Lesson Curation] ═══════════════════════════════════════════════`);
+    console.log(`[Lesson Curation] SUMMARY:`);
+    console.log(`[Lesson Curation]   Total lessons: ${lessonsToProcess.length}`);
+    console.log(`[Lesson Curation]   Lessons with sources: ${lessonsWithSources.size}`);
+    console.log(`[Lesson Curation]   Lessons without sources: ${lessonsWithoutSources.length}`);
+    console.log(`[Lesson Curation]   Total sources found: ${curatedResults.length}`);
+
+    if (lessonsWithoutSources.length > 0) {
+        console.log(`[Lesson Curation]   Failed lessons: ${lessonsWithoutSources.map(l => l.lesson_id).join(', ')}`);
+    }
+    console.log(`[Lesson Curation] ═══════════════════════════════════════════════`);
+
     // Insert results
     if (curatedResults.length > 0) {
         const { error } = await supabase.from('curation_rows').insert(curatedResults);
@@ -687,6 +769,8 @@ SEARCH STRATEGY:
         } else {
             console.log(`[Lesson Curation] Inserted ${curatedResults.length} lesson sources.`);
         }
+    } else {
+        console.warn(`[Lesson Curation] WARNING: No sources found for any lesson!`);
     }
 
     // Update curation status

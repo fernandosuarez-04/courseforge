@@ -382,6 +382,93 @@ export const materialsService = {
     },
 
     /**
+     * Fuerza el reset de una generación bloqueada
+     * Esto es útil cuando una generación se queda atorada sin completar
+     */
+    async forceResetGeneration(artifactId: string): Promise<{ success: boolean; error?: string }> {
+        const supabase = createClient();
+
+        // Obtener materiales actuales
+        const existing = await this.getMaterialsByArtifactId(artifactId);
+
+        if (!existing) {
+            return { success: false, error: 'No hay materiales para resetear' };
+        }
+
+        // Solo permitir reset si está en estado GENERATING
+        if (existing.state !== 'PHASE3_GENERATING') {
+            return { success: false, error: `Estado actual (${existing.state}) no requiere reset` };
+        }
+
+        try {
+            // Resetear el estado principal de materiales
+            const { error: materialsError } = await supabase
+                .from('materials')
+                .update({
+                    state: 'PHASE3_DRAFT' as Esp05StepState,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('id', existing.id);
+
+            if (materialsError) {
+                throw new Error(materialsError.message);
+            }
+
+            // Resetear también las lecciones que estén en GENERATING
+            const { error: lessonsError } = await supabase
+                .from('material_lessons')
+                .update({
+                    state: 'PENDING' as LessonMaterialState,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('materials_id', existing.id)
+                .eq('state', 'GENERATING');
+
+            if (lessonsError) {
+                console.warn('Error resetting lesson states:', lessonsError);
+                // No fallamos si esto falla, ya que el reset principal funcionó
+            }
+
+            return { success: true };
+        } catch (error: any) {
+            console.error('Error forcing reset:', error);
+            return { success: false, error: error.message || 'Error al resetear generación' };
+        }
+    },
+
+    /**
+     * Verifica si una generación está potencialmente bloqueada
+     * (más de 30 minutos en estado GENERATING)
+     */
+    async checkIfGenerationStuck(artifactId: string): Promise<{ isStuck: boolean; minutesElapsed: number }> {
+        const supabase = createClient();
+
+        const { data, error } = await supabase
+            .from('materials')
+            .select('state, updated_at')
+            .eq('artifact_id', artifactId)
+            .maybeSingle();
+
+        if (error || !data) {
+            return { isStuck: false, minutesElapsed: 0 };
+        }
+
+        if (data.state !== 'PHASE3_GENERATING') {
+            return { isStuck: false, minutesElapsed: 0 };
+        }
+
+        const updatedAt = new Date(data.updated_at).getTime();
+        const now = Date.now();
+        const minutesElapsed = Math.floor((now - updatedAt) / 60000);
+
+        // Considerar "stuck" después de 30 minutos
+        return {
+            isStuck: minutesElapsed >= 30,
+            minutesElapsed,
+        };
+    },
+
+    /**
      * Suscripción en tiempo real a cambios en materials y material_lessons
      */
     subscribeToMaterials(materialsId: string, callback: () => void) {

@@ -56,7 +56,16 @@ export const handler: Handler = async (event) => {
         return { statusCode: 400, body: 'Missing required field: materialsId' };
     }
 
-    console.log(`[Materials Background] Starting generation for materialsId: ${materialsId}`);
+    // Generate unique execution ID for this run (helps distinguish concurrent executions)
+    const executionId = `${materialsId.substring(0, 8)}-${Date.now().toString(36)}`;
+    const logPrefix = `[Materials ${executionId}]`;
+
+    console.log(`${logPrefix} Starting generation for materialsId: ${materialsId}`);
+
+    // Add random initial delay (0-15s) to prevent exact collision with concurrent executions
+    const initialDelay = Math.random() * 15000;
+    console.log(`${logPrefix} Initial delay: ${Math.round(initialDelay / 1000)}s to avoid rate limit collision`);
+    await new Promise(resolve => setTimeout(resolve, initialDelay));
 
     // 2. Setup Clients
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -78,6 +87,7 @@ export const handler: Handler = async (event) => {
         }
 
         const targetArtifactId = artifactId || materials.artifact_id;
+        console.log(`${logPrefix} Target artifactId: ${targetArtifactId}`);
 
         // 4. Fetch Instructional Plan (Paso 3)
         const { data: planRecord, error: planError } = await supabase
@@ -112,7 +122,7 @@ export const handler: Handler = async (event) => {
         }
 
         const aptaSources = curationRows || [];
-        console.log(`[Materials Background] Found ${aptaSources.length} apt sources`);
+        console.log(`${logPrefix} Found ${aptaSources.length} apt sources`);
 
         // 6. Determine which lessons to process
         let lessonsToProcess: any[] = planRecord.lesson_plans;
@@ -129,8 +139,8 @@ export const handler: Handler = async (event) => {
                 throw new Error(`Lesson not found: ${lessonError?.message}`);
             }
 
-            console.log(`[Materials Background] Single lesson mode - Looking for lesson_id: ${lessonRecord.lesson_id}, lesson_title: ${lessonRecord.lesson_title}`);
-            console.log(`[Materials Background] Available lesson_plans count: ${planRecord.lesson_plans?.length}`);
+            console.log(`${logPrefix} Single lesson mode - Looking for lesson_id: ${lessonRecord.lesson_id}, lesson_title: ${lessonRecord.lesson_title}`);
+            console.log(`${logPrefix} Available lesson_plans count: ${planRecord.lesson_plans?.length}`);
 
             // Try to find by lesson_id first, then by title
             lessonsToProcess = planRecord.lesson_plans.filter(
@@ -140,10 +150,10 @@ export const handler: Handler = async (event) => {
             // If no match found, log available lesson_ids for debugging
             if (lessonsToProcess.length === 0) {
                 const availableIds = planRecord.lesson_plans.map((lp: any) => lp.lesson_id).slice(0, 10);
-                console.log(`[Materials Background] WARNING: No matching lesson found. Available lesson_ids (first 10): ${availableIds.join(', ')}`);
+                console.log(`${logPrefix} WARNING: No matching lesson found. Available lesson_ids (first 10): ${availableIds.join(', ')}`);
 
                 // Fallback: create a minimal lesson plan from the lessonRecord data
-                console.log(`[Materials Background] Using fallback: recreating lesson plan from material_lessons record`);
+                console.log(`${logPrefix} Using fallback: recreating lesson plan from material_lessons record`);
                 lessonsToProcess = [{
                     lesson_id: lessonRecord.lesson_id,
                     lesson_title: lessonRecord.lesson_title,
@@ -165,7 +175,7 @@ export const handler: Handler = async (event) => {
             }
         }
 
-        console.log(`[Materials Background] Processing ${lessonsToProcess.length} lessons`);
+        console.log(`${logPrefix} Processing ${lessonsToProcess.length} lessons`);
 
         // 7. Fetch Model Settings from DB
         const DEFAULT_MODEL = 'gemini-2.5-pro';
@@ -182,7 +192,7 @@ export const handler: Handler = async (event) => {
         let activeModel = modelSettings?.model_name || DEFAULT_MODEL;
         const fallbackModel = modelSettings?.fallback_model || DEFAULT_FALLBACK;
         const modelSequence = [activeModel, fallbackModel, STABLE_FALLBACK];
-        console.log(`[Materials Background] Model sequence: ${modelSequence.join(' -> ')}`);
+        console.log(`${logPrefix} Model sequence: ${modelSequence.join(' -> ')}`);
 
         // 8. Batch processing configuration (conservative to avoid rate limits)
         const BATCH_SIZE = 2; // Process 2 lessons per batch (reduced from 5)
@@ -202,7 +212,7 @@ export const handler: Handler = async (event) => {
         for (let i = 0; i < lessonsToProcess.length; i += BATCH_SIZE) {
             batches.push(lessonsToProcess.slice(i, i + BATCH_SIZE));
         }
-        console.log(`[Materials Background] Split into ${batches.length} batches of up to ${BATCH_SIZE} lessons`);
+        console.log(`${logPrefix} Split into ${batches.length} batches of up to ${BATCH_SIZE} lessons`);
 
         let totalProcessed = 0;
         let totalSuccessful = 0;
@@ -211,17 +221,17 @@ export const handler: Handler = async (event) => {
         let globalLessonIndex = 0; // Track global lesson index across all batches
         for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
             const batch = batches[batchIdx];
-            console.log(`[Materials Background] ========== BATCH ${batchIdx + 1}/${batches.length} (${batch.length} lessons) ==========`);
+            console.log(`${logPrefix} ========== BATCH ${batchIdx + 1}/${batches.length} (${batch.length} lessons) ==========`);
 
             for (let lessonIdx = 0; lessonIdx < batch.length; lessonIdx++) {
                 const lessonPlan = batch[lessonIdx];
                 globalLessonIndex++; // Increment for each lesson
-                console.log(`[Materials Background] Processing lesson #${globalLessonIndex}: ${lessonPlan.lesson_title}`);
+                console.log(`${logPrefix} Processing lesson #${globalLessonIndex}: ${lessonPlan.lesson_title}`);
 
                 // For single-lesson regeneration, use the existing record directly
                 let materialLesson;
                 if (lessonPlan._existingRecordId) {
-                    console.log(`[Materials Background] Using existing lesson record: ${lessonPlan._existingRecordId}`);
+                    console.log(`${logPrefix} Using existing lesson record: ${lessonPlan._existingRecordId}`);
                     const { data: existingLesson } = await supabase
                         .from('material_lessons')
                         .select('*')
@@ -230,11 +240,11 @@ export const handler: Handler = async (event) => {
                     materialLesson = existingLesson;
                 } else {
                     // Find or create material_lesson record - pass globalLessonIndex for unique ID
-                    materialLesson = await findOrCreateMaterialLesson(supabase, materialsId, lessonPlan, globalLessonIndex);
+                    materialLesson = await findOrCreateMaterialLesson(supabase, materialsId, lessonPlan, globalLessonIndex, logPrefix);
                 }
 
                 if (!materialLesson) {
-                    console.error(`[Materials Background] Could not find/create lesson record for: ${lessonPlan.lesson_title}`);
+                    console.error(`${logPrefix} Could not find/create lesson record for: ${lessonPlan.lesson_title}`);
                     continue;
                 }
 
@@ -287,8 +297,8 @@ export const handler: Handler = async (event) => {
                     for (let modelIdx = 0; modelIdx < modelSequence.length; modelIdx++) {
                         usedModel = modelSequence[modelIdx];
                         try {
-                            console.log(`[Materials Background] Attempt ${lessonRetryAttempt + 1}/${MAX_RETRIES_PER_LESSON}, Model ${modelIdx + 1}/${modelSequence.length}: ${usedModel}`);
-                            generatedContent = await generateMaterialsWithGemini(genAI, usedModel, input);
+                            console.log(`${logPrefix} Attempt ${lessonRetryAttempt + 1}/${MAX_RETRIES_PER_LESSON}, Model ${modelIdx + 1}/${modelSequence.length}: ${usedModel}`);
+                            generatedContent = await generateMaterialsWithGemini(genAI, usedModel, input, logPrefix);
                             break retryLoop; // Success, exit all loops
                         } catch (genError: any) {
                             const errorStatus = genError.status || genError.code;
@@ -303,14 +313,14 @@ export const handler: Handler = async (event) => {
                                 errorMsg.includes('overloaded');
                             const isJsonError = errorMsg.includes('JSON');
 
-                            console.warn(`[Materials Background] Error: ${isRateLimited ? '429 Rate Limit' : isOverloaded ? '503 Overloaded' : isJsonError ? 'JSON Parse' : 'Unknown'} - ${errorMsg}`);
+                            console.warn(`${logPrefix} Error: ${isRateLimited ? '429 Rate Limit' : isOverloaded ? '503 Overloaded' : isJsonError ? 'JSON Parse' : 'Unknown'} - ${errorMsg}`);
 
                             // For rate limits: wait with exponential backoff, then retry same model
                             if (isRateLimited) {
                                 lessonRetryAttempt++;
                                 if (lessonRetryAttempt < MAX_RETRIES_PER_LESSON) {
                                     const backoffDelay = getExponentialBackoffDelay(lessonRetryAttempt - 1);
-                                    console.log(`[Materials Background] ⏳ Rate limited. Waiting ${Math.round(backoffDelay / 1000)}s before retry...`);
+                                    console.log(`${logPrefix} ⏳ Rate limited. Waiting ${Math.round(backoffDelay / 1000)}s before retry...`);
                                     await new Promise(resolve => setTimeout(resolve, backoffDelay));
                                     continue retryLoop; // Retry from beginning of model sequence
                                 }
@@ -318,7 +328,7 @@ export const handler: Handler = async (event) => {
 
                             // For overload/JSON errors: try next model immediately
                             if ((isOverloaded || isJsonError) && modelIdx < modelSequence.length - 1) {
-                                console.warn(`[Materials Background] Model ${usedModel} failed. Trying next model...`);
+                                console.warn(`${logPrefix} Model ${usedModel} failed. Trying next model...`);
                                 await new Promise(resolve => setTimeout(resolve, 3000));
                                 continue; // Try next model
                             }
@@ -328,7 +338,7 @@ export const handler: Handler = async (event) => {
                                 lessonRetryAttempt++;
                                 if (lessonRetryAttempt < MAX_RETRIES_PER_LESSON && !isRateLimited) {
                                     const backoffDelay = getExponentialBackoffDelay(lessonRetryAttempt - 1);
-                                    console.log(`[Materials Background] All models failed. Waiting ${Math.round(backoffDelay / 1000)}s before retry...`);
+                                    console.log(`${logPrefix} All models failed. Waiting ${Math.round(backoffDelay / 1000)}s before retry...`);
                                     await new Promise(resolve => setTimeout(resolve, backoffDelay));
                                     continue retryLoop;
                                 }
@@ -340,7 +350,7 @@ export const handler: Handler = async (event) => {
 
                 // If all retries exhausted, mark as failed
                 if (!generatedContent) {
-                    console.error(`[Materials Background] All retries exhausted for ${lessonPlan.lesson_title}`);
+                    console.error(`${logPrefix} All retries exhausted for ${lessonPlan.lesson_title}`);
                     await supabase
                         .from('material_lessons')
                         .update({
@@ -359,7 +369,7 @@ export const handler: Handler = async (event) => {
                 // If generation succeeded, save components
                 if (generatedContent) {
                     try {
-                        await saveGeneratedComponents(supabase, materialLesson.id, generatedContent, input.iteration_number);
+                        await saveGeneratedComponents(supabase, materialLesson.id, generatedContent, input.iteration_number, logPrefix);
 
                         // Update lesson state
                         await supabase
@@ -370,10 +380,10 @@ export const handler: Handler = async (event) => {
                             })
                             .eq('id', materialLesson.id);
 
-                        console.log(`[Materials Background] Lesson ${lessonPlan.lesson_title} generated successfully with ${usedModel}`);
+                        console.log(`${logPrefix} Lesson ${lessonPlan.lesson_title} generated successfully with ${usedModel}`);
                         totalSuccessful++;
                     } catch (saveError: any) {
-                        console.error(`[Materials Background] Error saving components for ${lessonPlan.lesson_title}:`, saveError);
+                        console.error(`${logPrefix} Error saving components for ${lessonPlan.lesson_title}:`, saveError);
                         // Mark lesson as failed instead of silently continuing
                         await supabase
                             .from('material_lessons')
@@ -395,14 +405,14 @@ export const handler: Handler = async (event) => {
 
                 // Delay between lessons within batch
                 if (lessonIdx < batch.length - 1) {
-                    console.log(`[Materials Background] Waiting ${DELAY_BETWEEN_LESSONS_MS / 1000}s before next lesson...`);
+                    console.log(`${logPrefix} Waiting ${DELAY_BETWEEN_LESSONS_MS / 1000}s before next lesson...`);
                     await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_LESSONS_MS));
                 }
             } // End of lessons loop within batch
 
             // Delay between batches (except after last batch)
             if (batchIdx < batches.length - 1) {
-                console.log(`[Materials Background] ⏸️ Batch ${batchIdx + 1} complete. Waiting ${DELAY_BETWEEN_BATCHES_MS / 1000}s before next batch...`);
+                console.log(`${logPrefix} ⏸️ Batch ${batchIdx + 1} complete. Waiting ${DELAY_BETWEEN_BATCHES_MS / 1000}s before next batch...`);
                 await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES_MS));
             }
         } // End of batches loop
@@ -416,7 +426,7 @@ export const handler: Handler = async (event) => {
             })
             .eq('id', materialsId);
 
-        console.log(`[Materials Background] Generation complete: ${totalSuccessful}/${totalProcessed} lessons successful`);
+        console.log(`${logPrefix} Generation complete: ${totalSuccessful}/${totalProcessed} lessons successful`);
 
         return {
             statusCode: 200,
@@ -424,7 +434,7 @@ export const handler: Handler = async (event) => {
         };
 
     } catch (err: any) {
-        console.error('[Materials Background] Generation Failed:', err);
+        console.error('${logPrefix} Generation Failed:', err);
 
         // Update materials state to NEEDS_FIX
         await supabase
@@ -448,7 +458,8 @@ async function findOrCreateMaterialLesson(
     supabase: any,
     materialsId: string,
     lessonPlan: any,
-    globalIndex: number // NEW: Guaranteed unique index from main loop
+    globalIndex: number, // NEW: Guaranteed unique index from main loop
+    logPrefix: string // For consistent logging across concurrent executions
 ): Promise<any> {
     // GUARANTEED UNIQUE ID: Always generate composite ID using globalIndex
     // Format: {baseId}-G{globalIndex}
@@ -463,9 +474,9 @@ async function findOrCreateMaterialLesson(
     // ALWAYS append globalIndex to guarantee uniqueness within this materials run
     const effectiveLessonId = `${baseId}-G${globalIndex}`;
 
-    console.log(`[Materials Background] Generated unique lesson_id: ${effectiveLessonId} (from base: ${lessonPlan.lesson_id || 'undefined'})`);
+    console.log(`${logPrefix} Generated unique lesson_id: ${effectiveLessonId} (from base: ${lessonPlan.lesson_id || 'undefined'})`);
 
-    console.log(`[Materials Background] Finding/creating lesson: ${effectiveLessonId} - ${lessonPlan.lesson_title}`);
+    console.log(`${logPrefix} Finding/creating lesson: ${effectiveLessonId} - ${lessonPlan.lesson_title}`);
 
     // Check if exists
     const { data: existing, error: findError } = await supabase
@@ -476,16 +487,16 @@ async function findOrCreateMaterialLesson(
         .maybeSingle();
 
     if (findError) {
-        console.error(`[Materials Background] Error searching for lesson ${effectiveLessonId}:`, findError);
+        console.error(`${logPrefix} Error searching for lesson ${effectiveLessonId}:`, findError);
     }
 
     if (existing) {
-        console.log(`[Materials Background] ✓ Found existing lesson record: ${existing.id}`);
+        console.log(`${logPrefix} ✓ Found existing lesson record: ${existing.id}`);
         return existing;
     }
 
     // Create new
-    console.log(`[Materials Background] Creating new lesson record for: ${effectiveLessonId}`);
+    console.log(`${logPrefix} Creating new lesson record for: ${effectiveLessonId}`);
     const { data: created, error } = await supabase
         .from('material_lessons')
         .insert({
@@ -505,18 +516,19 @@ async function findOrCreateMaterialLesson(
         .single();
 
     if (error) {
-        console.error(`[Materials Background] Error creating lesson ${effectiveLessonId}:`, error);
+        console.error(`${logPrefix} Error creating lesson ${effectiveLessonId}:`, error);
         throw new Error(`Error creating material_lesson: ${error.message}`);
     }
 
-    console.log(`[Materials Background] ✓ Created new lesson record: ${created.id}`);
+    console.log(`${logPrefix} ✓ Created new lesson record: ${created.id}`);
     return created;
 }
 
 async function generateMaterialsWithGemini(
     genAI: GoogleGenAI,
     modelName: string,
-    input: MaterialsGenerationInput
+    input: MaterialsGenerationInput,
+    logPrefix: string // For consistent logging across concurrent executions
 ): Promise<any> {
     // Build the prompt
     let prompt = materialsGenerationPrompt;
@@ -535,7 +547,7 @@ RECUERDA: Responde SOLO con JSON válido, sin texto adicional.
 
     const fullPrompt = prompt + '\n\n' + inputContext;
 
-    console.log(`[Materials Background] Calling Gemini (${modelName}) with ${fullPrompt.length} chars`);
+    console.log(`${logPrefix} Calling Gemini (${modelName}) with ${fullPrompt.length} chars`);
 
     // Call Gemini
     const response = await genAI.models.generateContent({
@@ -559,7 +571,7 @@ RECUERDA: Responde SOLO con JSON válido, sin texto adicional.
     try {
         return JSON.parse(jsonMatch[0]);
     } catch (parseError) {
-        console.error('[Materials Background] JSON Parse Error. Raw text:', responseText.substring(0, 500));
+        console.error(`${logPrefix} JSON Parse Error. Raw text:`, responseText.substring(0, 500));
         throw new Error('Failed to parse Gemini response as JSON');
     }
 }
@@ -568,7 +580,8 @@ async function saveGeneratedComponents(
     supabase: any,
     materialLessonId: string,
     generatedContent: any,
-    iterationNumber: number
+    iterationNumber: number,
+    logPrefix: string // For consistent logging across concurrent executions
 ): Promise<void> {
     const components = generatedContent.components || {};
     const sourceRefsUsed = generatedContent.source_refs_used || [];
@@ -601,9 +614,9 @@ async function saveGeneratedComponents(
             });
 
         if (error) {
-            console.error(`[Materials Background] Error saving component ${type}:`, error);
+            console.error(`${logPrefix} Error saving component ${type}:`, error);
         }
     }
 
-    console.log(`[Materials Background] Saved ${componentTypes.length} components`);
+    console.log(`${logPrefix} Saved ${componentTypes.length} components`);
 }

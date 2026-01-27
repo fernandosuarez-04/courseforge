@@ -5,6 +5,7 @@ import { CurationDashboard } from './CurationDashboard';
 import { motion } from 'framer-motion';
 import { createClient } from '@/utils/supabase/client';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 
 
 interface SourcesCurationGenerationContainerProps {
@@ -15,9 +16,10 @@ const DEFAULT_PROMPT_PREVIEW = `Prompt optimizado con reglas de curaduría, enfo
 
 export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurationGenerationContainerProps) {
   const { curation, rows, isGenerating, startCuration, updateRow, refresh } = useCuration(artifactId);
+  const router = useRouter();
   const [useCustomPrompt, setUseCustomPrompt] = useState(false);
   const [customPrompt, setCustomPrompt] = useState('');
-  
+
   // Review States
   const [reviewNotes, setReviewNotes] = useState('');
   const [isValidating, setIsValidating] = useState(false);
@@ -434,17 +436,19 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
                                 {isValidating ? <RefreshCw size={18} className="animate-spin" /> : <CheckSquare size={18} />}
                                 {isValidating ? "Validando..." : "Validar Contenido"}
                             </button>
-                            <button 
+                            <button
                                 onClick={async () => {
                                     const { updateCurationStatusAction } = await import('../../../app/admin/artifacts/actions');
                                     await updateCurationStatusAction(artifactId, 'STEP_APPROVED', reviewNotes);
-                                    // Optimistic update or wait for refresh
+                                    toast.success('Fase 4 aprobada exitosamente');
+                                    // Refresh both curation data and parent artifact view
                                     refresh();
+                                    router.refresh();
                                 }}
                                 disabled={isValidating}
                                 className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2
-                                    ${isValidating 
-                                        ? 'bg-[#00D4B3]/5 text-[#00D4B3]/30 border border-[#00D4B3]/5 cursor-not-allowed' 
+                                    ${isValidating
+                                        ? 'bg-[#00D4B3]/5 text-[#00D4B3]/30 border border-[#00D4B3]/5 cursor-not-allowed'
                                         : 'bg-[#00D4B3]/10 hover:bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/20'
                                     }
                                 `}
@@ -452,16 +456,19 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
                                 <CheckCircle2 size={18} />
                                 Aprobar Fase 4
                             </button>
-                            <button 
+                            <button
                                 onClick={async () => {
                                     const { updateCurationStatusAction } = await import('../../../app/admin/artifacts/actions');
                                     await updateCurationStatusAction(artifactId, 'STEP_REJECTED', reviewNotes);
+                                    toast.info('Fase 4 rechazada');
+                                    // Refresh both curation data and parent artifact view
                                     refresh();
+                                    router.refresh();
                                 }}
                                 disabled={isValidating}
                                 className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2
-                                    ${isValidating 
-                                        ? 'bg-[#EF4444]/5 text-[#EF4444]/30 border border-[#EF4444]/5 cursor-not-allowed' 
+                                    ${isValidating
+                                        ? 'bg-[#EF4444]/5 text-[#EF4444]/30 border border-[#EF4444]/5 cursor-not-allowed'
                                         : 'bg-[#EF4444]/10 hover:bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/20'
                                     }
                                 `}

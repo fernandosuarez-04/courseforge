@@ -17,7 +17,31 @@ import { VisualProductionContainer } from '@/domains/materials/components/Visual
 
 export default function ArtifactClientView({ artifact }: { artifact: any }) {
     const [activeTab, setActiveTab] = useState<'content' | 'validation'>('content');
-    const [currentStep, setCurrentStep] = useState(1);
+
+    // Calculate initial step based on artifact state (persist step across refreshes)
+    const calculateInitialStep = () => {
+        // Check from highest step down to find where user should be
+        if (artifact.materials_state === 'PHASE3_APPROVED') return 6;
+
+        const curationApproved = artifact.curation_state === 'PHASE2_APPROVED' ||
+                                  artifact.curation_state === 'PHASE2_READY_FOR_QA' ||
+                                  artifact.curation_state === 'PHASE2_HITL_REVIEW' ||
+                                  artifact.curation_state === 'PHASE2_GENERATED';
+        if (curationApproved) return 5;
+
+        if (artifact.plan_state === 'STEP_APPROVED') return 4;
+
+        const syllabusApproved = artifact.syllabus_status === 'STEP_APPROVED' ||
+                                  (artifact.temario && artifact.temario.qa?.status === 'APPROVED');
+        if (syllabusApproved) return 3;
+
+        const phase1Approved = artifact.state === 'APPROVED' || artifact.qa_status === 'APPROVED';
+        if (phase1Approved) return 2;
+
+        return 1;
+    };
+
+    const [currentStep, setCurrentStep] = useState(calculateInitialStep);
     const [feedback, setFeedback] = useState('');
     const [isRegenerating, setIsRegenerating] = useState(false);
 
@@ -28,6 +52,13 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
 
     const [toast, setToast] = useState<{ show: boolean, message: string, type: 'success' | 'error' | 'info' }>({ show: false, message: '', type: 'info' });
     const router = useRouter();
+
+    // Auto-advance step when artifact state changes (e.g., after approval)
+    useEffect(() => {
+        const newStep = calculateInitialStep();
+        // Only advance forward, never go back automatically
+        setCurrentStep(prev => Math.max(prev, newStep));
+    }, [artifact.state, artifact.syllabus_status, artifact.plan_state, artifact.curation_state, artifact.materials_state]);
 
     const [editingSection, setEditingSection] = useState<'nombres' | 'objetivos' | 'descripcion' | null>(null);
     const [editedContent, setEditedContent] = useState({

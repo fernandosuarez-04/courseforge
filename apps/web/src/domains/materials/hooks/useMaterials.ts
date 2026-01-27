@@ -21,6 +21,7 @@ interface UseMaterialsReturn {
     submitToQA: () => Promise<void>;
     applyQADecision: (decision: 'APPROVED' | 'REJECTED', notes?: string) => Promise<void>;
     validateMaterials: () => Promise<void>;
+    forceResetGeneration: () => Promise<void>;
     refresh: () => Promise<void>;
 
     // Helpers
@@ -29,12 +30,14 @@ interface UseMaterialsReturn {
     isValidating: boolean;
     isReadyForQA: boolean;
     isApproved: boolean;
+    generationStuckInfo: { isStuck: boolean; minutesElapsed: number } | null;
 }
 
 export function useMaterials(artifactId: string): UseMaterialsReturn {
     const [materials, setMaterials] = useState<MaterialsPayload | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [generationStuckInfo, setGenerationStuckInfo] = useState<{ isStuck: boolean; minutesElapsed: number } | null>(null);
 
     // Cargar materiales
     const loadMaterials = useCallback(async () => {
@@ -43,6 +46,14 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
             setError(null);
             const data = await materialsService.getMaterialsByArtifactId(artifactId);
             setMaterials(data);
+
+            // Check if generation is stuck
+            if (data?.state === 'PHASE3_GENERATING') {
+                const stuckInfo = await materialsService.checkIfGenerationStuck(artifactId);
+                setGenerationStuckInfo(stuckInfo);
+            } else {
+                setGenerationStuckInfo(null);
+            }
         } catch (err) {
             console.error('Error loading materials:', err);
             setError('Error al cargar materiales');
@@ -169,6 +180,22 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
         }
     }, [materials?.artifact_id, loadMaterials]);
 
+    const forceResetGeneration = useCallback(async () => {
+        try {
+            setError(null);
+            const result = await materialsService.forceResetGeneration(artifactId);
+            if (!result.success) {
+                setError(result.error || 'Error al resetear generación');
+                return;
+            }
+            setGenerationStuckInfo(null);
+            await loadMaterials();
+        } catch (err) {
+            console.error('Error forcing reset:', err);
+            setError('Error al resetear generación');
+        }
+    }, [artifactId, loadMaterials]);
+
     const getLessonComponents = useCallback(async (lessonId: string): Promise<MaterialComponent[]> => {
         return materialsService.getLessonComponents(lessonId);
     }, []);
@@ -193,12 +220,14 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
         submitToQA,
         applyQADecision,
         validateMaterials,
+        forceResetGeneration,
         refresh: loadMaterials,
         getLessonComponents,
         isGenerating: isGenerating || false,
         isValidating,
         isReadyForQA,
         isApproved,
+        generationStuckInfo,
     };
 }
 
