@@ -157,9 +157,155 @@ export async function savePublicationDraft(artifactId: string, data: any) {
 }
 
 export async function publishToSoflia(artifactId: string) {
-    // Placeholder for Phase 3
-    // This will be implemented when we connect to Soflia API
-    return { success: false, error: "Conexión con Soflia no implementada aún (Fase 3)" };
+    const supabase = await createClient();
+    console.log(`[publishToSoflia] Starting publication for artifact: ${artifactId}`);
+
+    try {
+        // 1. Validate Config
+        const MOCK_MODE = process.env.SOFLIA_MOCK_MODE === 'true';
+        const API_URL = process.env.SOFLIA_API_URL;
+        const API_KEY = process.env.SOFLIA_API_KEY;
+
+        if (!MOCK_MODE && (!API_URL || !API_KEY)) {
+            throw new Error("Configuración incompleta: Faltan variables de entorno SOFLIA_API_URL o SOFLIA_API_KEY");
+        }
+
+        // 2. Data Gathering
+        const { request, lessons, artifact } = await getPublicationData(artifactId);
+
+        if (!request || request.status !== 'READY') {
+            throw new Error("El curso no está en estado 'READY' para publicar. Guarde el borrador primero.");
+        }
+
+        // 3. Payload Construction
+        const payload = {
+            source: {
+                platform: 'courseforge',
+                version: '1.0',
+                artifact_id: artifactId
+            },
+            course: {
+                title: artifact.title,
+                description: artifact.title, // Use idea_central/title as description
+                slug: request.slug,
+                category: request.category,
+                level: request.level,
+                instructor_email: request.instructor_email,
+                price: request.price || 0,
+                thumbnail_url: request.thumbnail_url,
+                is_published: false
+            },
+            modules: [] as any[]
+        };
+
+        // Group lessons by module
+        const moduleMap = new Map<string, any[]>();
+        lessons.forEach(l => {
+            const modTitle = l.module_title || 'Módulo General'; // Fallback
+            if (!moduleMap.has(modTitle)) {
+                moduleMap.set(modTitle, []);
+            }
+            moduleMap.get(modTitle)?.push(l);
+        });
+
+        // Build Modules Array
+        let moduleOrder = 1;
+        for (const [modTitle, modLessons] of moduleMap.entries()) {
+            const moduleObj = {
+                title: modTitle,
+                order_index: moduleOrder++,
+                lessons: [] as any[]
+            };
+
+            let lessonOrder = 1;
+            for (const l of modLessons) {
+                // Get video data from request mapping
+                const mapping = request.lesson_videos?.[l.id];
+
+                // Determine video URL and ID
+                let videoUrl = '';
+                let videoId = '';
+                let provider = 'youtube';
+
+                if (mapping?.video_id) {
+                    videoId = mapping.video_id;
+                    provider = mapping.video_provider || 'youtube';
+
+                    if (provider === 'youtube') videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+                    else if (provider === 'vimeo') videoUrl = `https://vimeo.com/${videoId}`;
+                    else videoUrl = videoId; // Direct or other
+                } else if (l.auto_video_url) {
+                    videoUrl = l.auto_video_url;
+                    // Try to extract ID from auto URL if missing in mapping
+                    // (Though mapping should have covered it via Client defaults, but safe fallback)
+                    // ... (Simplification: rely on mapping predominantly or use full URL as ID if direct)
+                }
+
+                moduleObj.lessons.push({
+                    title: l.title,
+                    order_index: lessonOrder++,
+                    duration_seconds: mapping?.duration || 0,
+                    video_url: videoUrl,
+                    video_provider: provider,
+                    video_provider_id: videoId || videoUrl, // Fallback to URL if no ID extracted
+                    is_free: false,
+                    content_blocks: []
+                });
+            }
+            payload.modules.push(moduleObj);
+        }
+
+        console.log(`[publishToSoflia] Payload constructed. Slug: ${payload.course.slug}, Modules: ${payload.modules.length}`);
+
+        let result;
+        if (MOCK_MODE) {
+            console.log('--- MOCK MODE ENABLED ---');
+            console.log('Skipping actual API call. Payload that would be sent:', JSON.stringify(payload, null, 2));
+            // Simulate delay
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            result = { message: "Mock success", mock: true };
+        } else {
+            // 4. Send to Soflia
+            const targetUrl = `${API_URL}/api/courses/import`;
+            console.log(`[publishToSoflia] Sending to: ${targetUrl}`);
+
+            const response = await fetch(targetUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': API_KEY || ''
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`[publishToSoflia] API Error (${response.status}):`, errorText);
+                throw new Error(`Error remoto (${response.status}): ${errorText.substring(0, 200)}`);
+            }
+
+            result = await response.json();
+        }
+
+        console.log('[publishToSoflia] Success:', result);
+
+        // 5. Update Status locally
+        await supabase
+            .from('publication_requests')
+            .update({
+                status: 'SENT',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', request.id);
+
+        revalidatePath(`/admin/artifacts/${artifactId}/publish`);
+
+        return { success: true, data: result };
+
+    } catch (error: any) {
+        console.error('[publishToSoflia] Validation/Exec Error:', error);
+        return { success: false, error: error.message };
+    }
 }
 
 // Helper to parse ISO 8601 duration (PT1H2M3S)
