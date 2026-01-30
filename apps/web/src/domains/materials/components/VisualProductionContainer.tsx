@@ -3,12 +3,14 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useMaterials } from '../hooks/useMaterials';
 import { ProductionAssetCard } from './ProductionAssetCard';
-import { generateVideoPromptsAction, saveMaterialAssetsAction } from '@/app/admin/artifacts/actions';
+import { generateVideoPromptsAction, saveMaterialAssetsAction, updateProductionStatusAction } from '@/app/admin/artifacts/actions';
 import { MaterialComponent, MaterialLesson, ProductionStatus } from '../types/materials.types';
 import { Loader2, Clapperboard, CheckCircle2, Clock, AlertCircle, Save } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface VisualProductionContainerProps {
     artifactId: string;
+    productionComplete?: boolean;
 }
 
 interface ProductionGroup {
@@ -27,7 +29,8 @@ interface PendingAssets {
     };
 }
 
-export function VisualProductionContainer({ artifactId }: VisualProductionContainerProps) {
+export function VisualProductionContainer({ artifactId, productionComplete }: VisualProductionContainerProps) {
+    const router = useRouter();
     const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
     const [productionItems, setProductionItems] = useState<ProductionGroup[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -158,6 +161,28 @@ export function VisualProductionContainer({ artifactId }: VisualProductionContai
         return { total, completed, inProgress, pending, percentage };
     }, [productionItems]);
 
+    // Auto-complete artifact production status
+    useEffect(() => {
+        const checkCompletion = async () => {
+            if (productionItems.length === 0) return;
+
+            // If 100% and not marked complete -> Mark complete
+            if (progressStats.percentage === 100 && !productionComplete) {
+                await updateProductionStatusAction(artifactId, true);
+                router.refresh();
+            }
+            // If not 100% but marked complete -> Unmark (revert)
+            else if (progressStats.percentage < 100 && productionComplete) {
+                await updateProductionStatusAction(artifactId, false);
+                router.refresh();
+            }
+        };
+
+        // Add small delay to allow things to settle
+        const timer = setTimeout(checkCompletion, 1000);
+        return () => clearTimeout(timer);
+    }, [progressStats.percentage, productionComplete, artifactId, router, productionItems.length]);
+
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center py-20 bg-[#151A21] rounded-2xl border border-[#6C757D]/10">
@@ -214,8 +239,8 @@ export function VisualProductionContainer({ artifactId }: VisualProductionContai
                         onClick={handleSaveAll}
                         disabled={isSavingAll || !hasPendingChanges}
                         className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${hasPendingChanges
-                                ? 'bg-[#1F5AF6] hover:bg-[#1a4bd6] text-white shadow-lg shadow-[#1F5AF6]/20'
-                                : 'bg-[#0F1419] text-[#6C757D] border border-[#6C757D]/20 cursor-not-allowed'
+                            ? 'bg-[#1F5AF6] hover:bg-[#1a4bd6] text-white shadow-lg shadow-[#1F5AF6]/20'
+                            : 'bg-[#0F1419] text-[#6C757D] border border-[#6C757D]/20 cursor-not-allowed'
                             }`}
                     >
                         {isSavingAll ? (

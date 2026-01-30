@@ -9,7 +9,7 @@ export async function getPublicationData(artifactId: string) {
     // 1. Get Artifact basic info
     const { data: artifact, error: artError } = await supabase
         .from('artifacts')
-        .select('id, idea_central, generation_metadata')
+        .select('id, idea_central, generation_metadata, descripcion')
         .eq('id', artifactId)
         .single();
 
@@ -21,7 +21,7 @@ export async function getPublicationData(artifactId: string) {
     // We need to join with materials -> material_lessons
     const { data: materials, error: matError } = await supabase
         .from('materials')
-        .select('id')
+        .select('id, package')
         .eq('artifact_id', artifactId)
         .single();
 
@@ -33,9 +33,11 @@ export async function getPublicationData(artifactId: string) {
                 lesson_id, 
                 lesson_title, 
                 module_title,
+                oa_text,
                 material_components(
                     type,
-                    assets
+                    assets,
+                    content
                 )
             `)
             .eq('materials_id', materials.id)
@@ -59,7 +61,9 @@ export async function getPublicationData(artifactId: string) {
                     id: l.lesson_id,
                     title: l.lesson_title,
                     module_title: l.module_title,
-                    auto_video_url: videoUrl
+                    auto_video_url: videoUrl,
+                    summary: l.oa_text,
+                    components: l.material_components || []
                 };
             });
         }
@@ -86,10 +90,12 @@ export async function getPublicationData(artifactId: string) {
     return {
         artifact: {
             id: artifact.id,
-            title: artifact.idea_central
+            title: artifact.idea_central,
+            description: artifact.descripcion
         },
         lessons,
-        request
+        request,
+        materialsPackage: materials?.package
     };
 }
 
@@ -171,7 +177,7 @@ export async function publishToSoflia(artifactId: string) {
         }
 
         // 2. Data Gathering
-        const { request, lessons, artifact } = await getPublicationData(artifactId);
+        const { request, lessons, artifact, materialsPackage } = await getPublicationData(artifactId);
 
         if (!request || request.status !== 'READY') {
             throw new Error("El curso no está en estado 'READY' para publicar. Guarde el borrador primero.");
@@ -186,7 +192,7 @@ export async function publishToSoflia(artifactId: string) {
             },
             course: {
                 title: artifact.title,
-                description: artifact.title, // Use idea_central/title as description
+                description: getArtifactDescription(artifact), // Helper to extract text
                 slug: request.slug,
                 category: request.category,
                 level: request.level,
@@ -241,19 +247,120 @@ export async function publishToSoflia(artifactId: string) {
                     // ... (Simplification: rely on mapping predominantly or use full URL as ID if direct)
                 }
 
+                // 3.1 Extract Content
+                const components = l.components || [];
+
+                // Transcription (from Video Scripts)
+                let transcription = '';
+                const videoComps = components.filter((c: any) => ['VIDEO_THEORETICAL', 'VIDEO_DEMO', 'VIDEO_GUIDE'].includes(c.type));
+                videoComps.forEach((vc: any) => {
+                    if (vc.content?.script?.sections) {
+                        transcription += vc.content.script.sections
+                            .map((s: any) => `[${s.timecode_start}] ${s.narration_text}`)
+                            .join('\n\n');
+                    }
+                });
+
+                // Activities (Quiz & Dialogue)
+                const activities = [] as any[];
+                components.forEach((c: any) => {
+                    if (c.type === 'QUIZ' && c.content) {
+                        activities.push({
+                            title: c.content.title || 'Evaluación',
+                            type: 'quiz',
+                            data: c.content
+                        });
+                    } else if (c.type === 'DIALOGUE' && c.content) {
+                        activities.push({
+                            title: c.content.title || 'Simulación con LIA',
+                            type: 'lia_script',
+                            data: c.content
+                        });
+                    }
+                });
+
+                // Content Blocks (Reading, Exercise, Demo Guide)
+                const contentBlocks = [] as any[];
+                let blockOrder = 1;
+                components.forEach((c: any) => {
+                    if (['READING', 'EXERCISE', 'DEMO_GUIDE'].includes(c.type) && c.content) {
+                        let contentHtml = c.content.body_html || '';
+
+                        // Handler for Demo Guide which might not have body_html but steps
+                        if (c.type === 'DEMO_GUIDE' && !contentHtml && c.content.steps) {
+                            contentHtml = `<h3>${c.content.title}</h3><ul>` +
+                                c.content.steps.map((s: any) => `<li><strong>Paso ${s.step_number}:</strong> ${s.instruction}</li>`).join('') +
+                                '</ul>';
+                        }
+
+                        if (contentHtml) {
+                            contentBlocks.push({
+                                title: c.content.title || (c.type === 'READING' ? 'Lectura' : 'Ejercicio'),
+                                content: contentHtml,
+                                type: 'html', // Soflia likely expects type
+                                order: blockOrder++
+                            });
+                        }
+                    }
+                });
+
+                // Materials (Slides & Package)
+                const materials = [] as any[];
+                // Slides from assets
+                components.forEach((c: any) => {
+                    if (c.assets?.slides_url) {
+                        materials.push({
+                            title: 'Presentación (Diapositivas)',
+                            url: c.assets.slides_url,
+                            type: 'link'
+                        });
+                    }
+                });
+
+                // Package files matching logic (Optional, basic implementation)
+                if (materialsPackage?.files) {
+                    const lessonFiles = materialsPackage.files.filter((f: any) => f.lesson_id === l.id);
+                    lessonFiles.forEach((f: any) => {
+                        materials.push({
+                            title: `Recurso: ${f.component}`,
+                            url: f.path, // Assuming accessible path/url
+                            type: 'download'
+                        });
+                    });
+                }
+
+                const durationRaw = mapping?.duration;
+                const durationNum = Number(durationRaw);
+                const finalDuration = Math.round(Math.max(durationNum || 0, 60));
+
+                console.log(`[DEBUG_FIX_V2] Lesson: ${l.title}`);
+                console.log(`[DEBUG_FIX_V2] Raw: ${durationRaw} (${typeof durationRaw})`);
+                console.log(`[DEBUG_FIX_V2] Final Duration: ${finalDuration}`);
+
                 moduleObj.lessons.push({
                     title: l.title,
                     order_index: lessonOrder++,
-                    duration_seconds: mapping?.duration || 0,
+                    duration_seconds: finalDuration,
+                    duration: finalDuration, // Redundancy for API compatibility
+                    summary: l.summary || '',
+                    description: l.summary || '', // Fallback
+                    transcription: transcription,
                     video_url: videoUrl,
                     video_provider: provider,
-                    video_provider_id: videoId || videoUrl, // Fallback to URL if no ID extracted
+                    video_provider_id: videoId || videoUrl,
                     is_free: false,
-                    content_blocks: []
+                    content_blocks: contentBlocks,
+                    activities: activities,
+                    materials: materials
                 });
             }
             payload.modules.push(moduleObj);
         }
+
+        // FULL PAYLOAD DEBUG
+        console.log('[DEBUG_FULL_PAYLOAD] JSON START');
+        console.log(JSON.stringify(payload, null, 2));
+        console.log('[DEBUG_FULL_PAYLOAD] JSON END');
 
         console.log(`[publishToSoflia] Payload constructed. Slug: ${payload.course.slug}, Modules: ${payload.modules.length}`);
 
@@ -370,4 +477,14 @@ export async function fetchVideoMetadata(url: string) {
     }
 
     return { duration: 0, title: '' };
+}
+
+function getArtifactDescription(artifact: any): string {
+    if (!artifact.description) return artifact.title || '';
+
+    if (typeof artifact.description === 'string') return artifact.description;
+
+    // Handle JSON object structure
+    const desc = artifact.description;
+    return desc.texto || desc.resumen || desc.overview || desc.description || JSON.stringify(desc);
 }

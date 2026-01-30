@@ -985,3 +985,21 @@ export async function markLessonForFixAction(lessonId: string) {
         return { success: false, error: error.message };
     }
 }
+
+export async function updateProductionStatusAction(artifactId: string, isComplete: boolean) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const { error } = await supabase
+        .from('artifacts')
+        .update({ production_complete: isComplete })
+        .eq('id', artifactId);
+
+    if (error) {
+        console.error('Error updating production status:', error);
+        return { success: false, error: error.message };
+    }
+
+    return { success: true };
+}

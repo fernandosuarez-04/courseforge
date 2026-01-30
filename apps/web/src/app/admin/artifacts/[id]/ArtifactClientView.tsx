@@ -278,6 +278,7 @@ export default function ArtifactClientView({
                     onClick={() => setCurrentStep(6)}
                     icon={<Target size={18} />}
                     disabled={artifact.materials_state !== 'PHASE3_APPROVED'}
+                    done={artifact.production_complete}
                 />
 
                 <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${publicationRequest ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
@@ -567,7 +568,7 @@ export default function ArtifactClientView({
                 </div>
             ) : currentStep === 6 ? (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                    <VisualProductionContainer artifactId={artifact.id} />
+                    <VisualProductionContainer artifactId={artifact.id} productionComplete={artifact.production_complete} />
                 </div>
             ) : currentStep === 7 ? (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
