@@ -560,6 +560,8 @@ export default function ArtifactClientView({
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                     <SourcesCurationGenerationContainer
                         artifactId={artifact.id}
+                        temario={artifact.temario?.modules}
+                        ideaCentral={artifact.idea_central}
                     />
                 </div>
             ) : currentStep === 5 ? (

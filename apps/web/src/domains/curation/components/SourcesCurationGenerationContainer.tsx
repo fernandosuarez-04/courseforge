@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { BookOpen, Settings2, CheckCircle2, Play, RefreshCw, Library, Loader2, Edit3, AlertCircle, CheckSquare, Pause, Square, PlayCircle } from 'lucide-react';
+import { BookOpen, Settings2, CheckCircle2, Play, RefreshCw, Library, Loader2, Edit3, AlertCircle, CheckSquare, Pause, Square, PlayCircle, Clipboard, ExternalLink, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { useCuration } from '../hooks/useCuration';
 import { CurationDashboard } from './CurationDashboard';
 import { motion } from 'framer-motion';
@@ -8,18 +8,37 @@ import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { ConfirmationModal, ModalVariant } from '../../../shared/components/ConfirmationModal';
 
+interface SyllabusLesson {
+    id?: string;
+    title: string;
+    objective_specific: string;
+}
+
+interface SyllabusModule {
+    id?: string;
+    title: string;
+    objective_general_ref: string;
+    lessons: SyllabusLesson[];
+}
 
 interface SourcesCurationGenerationContainerProps {
     artifactId: string;
+    temario?: SyllabusModule[];
+    ideaCentral?: string;
 }
 
 const DEFAULT_PROMPT_PREVIEW = `Prompt optimizado con reglas de curaduría, enfoque en accesibilidad (sin descargas), validación de URLs y estructura JSON estricta. Utiliza búsquedas en tiempo real para verificar la disponibilidad.`;
 
-export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurationGenerationContainerProps) {
+// URL del GPT personalizado (actualizar cuando se cree)
+const GPT_URL = 'https://chat.openai.com/g/g-courseforge-sources';
+
+export function SourcesCurationGenerationContainer({ artifactId, temario, ideaCentral }: SourcesCurationGenerationContainerProps) {
     const { curation, rows, isGenerating, startCuration, updateRow, refresh } = useCuration(artifactId);
     const router = useRouter();
     const [useCustomPrompt, setUseCustomPrompt] = useState(false);
     const [customPrompt, setCustomPrompt] = useState('');
+    const [showAutomaticFlow, setShowAutomaticFlow] = useState(false);
+    const [copiedToClipboard, setCopiedToClipboard] = useState(false);
 
     // Review States
     const [reviewNotes, setReviewNotes] = useState('');
@@ -209,6 +228,51 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
     const handleGenerate = async () => {
         setProgress(5); // Reset progress on new run
         await startCuration(1, []);
+    };
+
+    // Generate context for GPT
+    const generateGPTContext = (): string => {
+        if (!temario || !ideaCentral) {
+            return `ARTIFACT_ID: ${artifactId}\n\nNo hay temario disponible. Por favor genera el temario primero.`;
+        }
+
+        let context = `ARTIFACT_ID: ${artifactId}\n\n`;
+        context += `IDEA CENTRAL: ${ideaCentral}\n\n`;
+        context += `TEMARIO:\n`;
+
+        temario.forEach((module, mIdx) => {
+            context += `- Módulo ${mIdx + 1}: ${module.title}\n`;
+            module.lessons.forEach((lesson, lIdx) => {
+                const lessonId = lesson.id || `M${mIdx + 1}L${lIdx + 1}`;
+                context += `  - Lección ${mIdx + 1}.${lIdx + 1} (${lessonId}): ${lesson.title}\n`;
+                if (lesson.objective_specific) {
+                    context += `    Objetivo: ${lesson.objective_specific}\n`;
+                }
+            });
+        });
+
+        return context;
+    };
+
+    // Handle GPT button click
+    const handleOpenGPT = async () => {
+        const context = generateGPTContext();
+
+        try {
+            await navigator.clipboard.writeText(context);
+            setCopiedToClipboard(true);
+            toast.success('Contexto copiado al portapapeles. Pégalo en ChatGPT.');
+
+            // Reset copied state after 3 seconds
+            setTimeout(() => setCopiedToClipboard(false), 3000);
+
+            // Open GPT in new tab
+            window.open(GPT_URL, '_blank');
+        } catch (err) {
+            // Fallback for browsers that don't support clipboard API
+            toast.error('No se pudo copiar. Copia el contexto manualmente.');
+            console.error('Clipboard error:', err);
+        }
     };
 
     const handlePausar = () => {
@@ -677,7 +741,7 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
         );
     }
 
-    // --- VIEW 3: INITIAL CONFIG (Matches Image 1/Previous) ---
+    // --- VIEW 3: INITIAL CONFIG - GPT PRIMARY, AUTOMATIC SECONDARY ---
     return (
         <div className="max-w-4xl mx-auto space-y-8 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
             <div className="space-y-2">
@@ -688,90 +752,175 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
                     Paso 4: Curaduría de Fuentes (Fase 2)
                 </h2>
                 <p className="text-gray-500 dark:text-[#94A3B8] text-base leading-relaxed max-w-2xl ml-12">
-                    Genera fuentes de alta calidad para cada lección. Búsqueda profunda con 1-2 fuentes verificadas por lección.
+                    Encuentra fuentes de alta calidad para cada lección. Búsqueda profunda con 1-2 fuentes verificadas por lección.
                 </p>
             </div>
 
-            {/* Configuration Card */}
-            <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 shadow-xl shadow-black/5 dark:shadow-black/20 transition-all duration-300">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-gray-900 dark:text-white font-semibold text-sm uppercase tracking-wider flex items-center gap-2">
-                        <Settings2 size={16} className="text-[#00D4B3]" />
-                        Configuración del Prompt
-                    </h3>
-                    <div className="flex items-center gap-2">
-                        <span className={`text-xs font-medium transition-colors ${useCustomPrompt ? 'text-[#00D4B3]' : 'text-gray-500 dark:text-[#6C757D]'}`}>
-                            {useCustomPrompt ? 'Prompt personalizado' : 'Sistema por defecto'}
-                        </span>
+            {/* PRIMARY: GPT Flow */}
+            <div className="bg-gradient-to-br from-[#1F5AF6]/5 via-[#00D4B3]/5 to-[#1F5AF6]/5 dark:from-[#1F5AF6]/10 dark:via-[#00D4B3]/10 dark:to-[#1F5AF6]/10 border border-[#1F5AF6]/20 dark:border-[#1F5AF6]/30 rounded-2xl p-8 shadow-xl shadow-[#1F5AF6]/5 dark:shadow-black/20 transition-all duration-300 relative overflow-hidden">
+                {/* Background decoration */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-[#1F5AF6]/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-[#00D4B3]/10 rounded-full blur-2xl pointer-events-none" />
 
-                        <button
-                            onClick={() => setUseCustomPrompt(!useCustomPrompt)}
-                            className={`w-10 h-5 rounded-full relative border transition-all duration-300 focus:outline-none ${useCustomPrompt ? 'bg-[#00D4B3]/20 border-[#00D4B3]' : 'bg-gray-200 dark:bg-[#0F1419] border-gray-300 dark:border-[#6C757D]/20'}`}
-                        >
-                            <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all duration-300 shadow-sm ${useCustomPrompt ? 'left-5 bg-[#00D4B3]' : 'left-0.5 bg-gray-400 dark:bg-[#6C757D]'}`} />
-                        </button>
+                <div className="relative z-10">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 rounded-lg bg-[#1F5AF6]/20 text-[#1F5AF6]">
+                            <Sparkles size={20} />
+                        </div>
+                        <div>
+                            <h3 className="text-gray-900 dark:text-white font-bold text-lg">
+                                Buscar con ChatGPT
+                            </h3>
+                            <span className="text-[10px] bg-[#1F5AF6]/20 text-[#1F5AF6] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                                Recomendado
+                            </span>
+                        </div>
                     </div>
-                </div>
 
-                <div className="relative">
-                    {useCustomPrompt ? (
-                        <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-3">
-                            <div className="flex justify-between items-center">
-                                <label className="text-xs text-gray-500 dark:text-gray-400 font-medium">Instrucciones Adicionales</label>
-                                <span className="text-[10px] text-[#00D4B3] bg-[#00D4B3]/10 px-2 py-0.5 rounded border border-[#00D4B3]/20">Modo Edición</span>
-                            </div>
-                            <textarea
-                                value={customPrompt}
-                                onChange={(e) => setCustomPrompt(e.target.value)}
-                                className="w-full h-48 bg-gray-50 dark:bg-[#0F1419] border border-gray-300 dark:border-[#00D4B3]/30 rounded-xl p-4 text-sm text-gray-900 dark:text-gray-300 font-mono leading-relaxed focus:outline-none focus:border-[#00D4B3] transition-colors resize-none shadow-inner placeholder:text-gray-400 dark:placeholder:text-gray-600"
-                                placeholder={DEFAULT_PROMPT_PREVIEW}
-                            />
-                        </div>
-                    ) : (
-                        <div className="bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/10 rounded-xl p-6 flex flex-col gap-4 group hover:border-[#00D4B3]/20 transition-colors cursor-default animate-in fade-in duration-300 relative overflow-hidden">
-                            <div className="flex items-center gap-3 relative z-10">
-                                <CheckCircle2 size={18} className="text-[#00D4B3]" />
-                                <h4 className="text-[#00D4B3] font-bold text-sm">
-                                    Configuración Optimizada
-                                </h4>
-                            </div>
+                    <p className="text-gray-600 dark:text-[#94A3B8] text-sm leading-relaxed mb-6 max-w-lg">
+                        Usa nuestro GPT especializado para encontrar fuentes verificadas y relevantes.
+                        El contexto del taller se copiará automáticamente al portapapeles.
+                    </p>
 
-                            <p className="text-gray-600 dark:text-[#94A3B8] text-sm leading-relaxed relative z-10">
-                                {DEFAULT_PROMPT_PREVIEW}
-                            </p>
+                    <div className="flex flex-wrap gap-3 mb-6">
+                        {['Fuentes Verificadas', 'Revisión Humana', 'Envío Automático'].map((tag, i) => (
+                            <span key={i} className="text-[10px] bg-white dark:bg-[#151A21] text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5">
+                                <CheckCircle2 size={10} className="text-[#00D4B3]" />
+                                {tag}
+                            </span>
+                        ))}
+                    </div>
 
-                            <div className="flex flex-wrap gap-2 relative z-10 mt-2">
-                                {['Google Search Live', 'Validación 200 OK', 'Anti-Hallucination', 'Premium Sources'].map((tag, i) => (
-                                    <span key={i} className="text-[10px] bg-white dark:bg-[#151A21] text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-2 py-1 rounded font-bold uppercase tracking-wider">
-                                        {tag}
-                                    </span>
-                                ))}
-                            </div>
+                    <button
+                        onClick={handleOpenGPT}
+                        disabled={!temario || temario.length === 0}
+                        className={`
+                            w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all relative overflow-hidden
+                            ${temario && temario.length > 0
+                                ? 'bg-[#1F5AF6] hover:bg-[#1548c7] text-white shadow-lg shadow-[#1F5AF6]/25 hover:shadow-[#1F5AF6]/40 hover:-translate-y-0.5'
+                                : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                            }
+                        `}
+                    >
+                        {copiedToClipboard ? (
+                            <>
+                                <CheckCircle2 size={20} />
+                                ¡Copiado! Abriendo ChatGPT...
+                            </>
+                        ) : (
+                            <>
+                                <ExternalLink size={20} />
+                                Buscar fuentes con ChatGPT
+                            </>
+                        )}
+                    </button>
 
-                            <div className="absolute right-[-20px] top-[-20px] opacity-5">
-                                <svg width="200" height="200" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-                            </div>
-                        </div>
+                    {(!temario || temario.length === 0) && (
+                        <p className="text-center text-amber-500 text-xs mt-3 flex items-center justify-center gap-1">
+                            <AlertCircle size={12} />
+                            Necesitas completar el temario primero (Paso 2)
+                        </p>
+                    )}
+
+                    {temario && temario.length > 0 && (
+                        <p className="text-center text-gray-500 dark:text-[#6C757D] text-xs mt-3">
+                            📋 Se copiará el contexto del taller ({temario.reduce((acc, m) => acc + m.lessons.length, 0)} lecciones) al portapapeles
+                        </p>
                     )}
                 </div>
-
             </div>
 
-            <button
-                onClick={handleGenerate}
-                className={`
-               w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all relative overflow-hidden
-               bg-[#00D4B3] hover:bg-[#00bda0] text-[#0A2540] shadow-lg shadow-[#00D4B3]/25 hover:shadow-[#00D4B3]/40 hover:-translate-y-0.5
-            `}
-            >
-                <Play size={20} fill="currentColor" />
-                Iniciar Curaduría
-            </button>
+            {/* Divider */}
+            <div className="flex items-center gap-4">
+                <div className="flex-1 h-px bg-gray-200 dark:bg-[#2D333B]" />
+                <span className="text-xs text-gray-400 dark:text-[#6C757D] font-medium">o</span>
+                <div className="flex-1 h-px bg-gray-200 dark:bg-[#2D333B]" />
+            </div>
 
-            <div className="text-center">
-                <p className="text-gray-500 dark:text-[#6C757D] text-xs">
-                    La curaduría validará la disponibilidad de enlaces externamente.
-                </p>
+            {/* SECONDARY: Automatic Flow (Collapsible) */}
+            <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl overflow-hidden shadow-md shadow-black/5 dark:shadow-black/20 transition-all duration-300">
+                <button
+                    onClick={() => setShowAutomaticFlow(!showAutomaticFlow)}
+                    className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-[#1A2027] transition-colors"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-[#00D4B3]/10 text-[#00D4B3]">
+                            <Settings2 size={18} />
+                        </div>
+                        <div>
+                            <h3 className="text-gray-900 dark:text-white font-semibold text-sm">
+                                Búsqueda Automática
+                            </h3>
+                            <p className="text-gray-500 dark:text-[#6C757D] text-xs">
+                                Usa el sistema de curaduría automática con IA
+                            </p>
+                        </div>
+                    </div>
+                    {showAutomaticFlow ? (
+                        <ChevronUp size={20} className="text-gray-400" />
+                    ) : (
+                        <ChevronDown size={20} className="text-gray-400" />
+                    )}
+                </button>
+
+                {showAutomaticFlow && (
+                    <div className="p-6 pt-0 animate-in fade-in slide-in-from-top-2 duration-300 border-t border-gray-100 dark:border-[#2D333B]">
+                        {/* Configuration Card */}
+                        <div className="mb-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <h4 className="text-gray-700 dark:text-gray-300 font-medium text-sm flex items-center gap-2">
+                                    <Settings2 size={14} className="text-[#00D4B3]" />
+                                    Configuración del Prompt
+                                </h4>
+                                <div className="flex items-center gap-2">
+                                    <span className={`text-xs font-medium transition-colors ${useCustomPrompt ? 'text-[#00D4B3]' : 'text-gray-500 dark:text-[#6C757D]'}`}>
+                                        {useCustomPrompt ? 'Personalizado' : 'Por defecto'}
+                                    </span>
+                                    <button
+                                        onClick={() => setUseCustomPrompt(!useCustomPrompt)}
+                                        className={`w-9 h-5 rounded-full relative border transition-all duration-300 focus:outline-none ${useCustomPrompt ? 'bg-[#00D4B3]/20 border-[#00D4B3]' : 'bg-gray-200 dark:bg-[#0F1419] border-gray-300 dark:border-[#6C757D]/20'}`}
+                                    >
+                                        <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all duration-300 shadow-sm ${useCustomPrompt ? 'left-[18px] bg-[#00D4B3]' : 'left-0.5 bg-gray-400 dark:bg-[#6C757D]'}`} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {useCustomPrompt ? (
+                                <textarea
+                                    value={customPrompt}
+                                    onChange={(e) => setCustomPrompt(e.target.value)}
+                                    className="w-full h-32 bg-gray-50 dark:bg-[#0F1419] border border-gray-300 dark:border-[#00D4B3]/30 rounded-xl p-4 text-sm text-gray-900 dark:text-gray-300 font-mono leading-relaxed focus:outline-none focus:border-[#00D4B3] transition-colors resize-none"
+                                    placeholder={DEFAULT_PROMPT_PREVIEW}
+                                />
+                            ) : (
+                                <div className="bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/10 rounded-xl p-4">
+                                    <p className="text-gray-600 dark:text-[#94A3B8] text-sm leading-relaxed">
+                                        {DEFAULT_PROMPT_PREVIEW}
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 mt-3">
+                                        {['Google Search', 'Validación URL', 'Anti-Hallucination'].map((tag, i) => (
+                                            <span key={i} className="text-[10px] bg-white dark:bg-[#151A21] text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-2 py-1 rounded font-bold uppercase tracking-wider">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <button
+                            onClick={handleGenerate}
+                            className="w-full py-3 rounded-xl font-bold text-base flex items-center justify-center gap-3 transition-all bg-[#00D4B3] hover:bg-[#00bda0] text-[#0A2540] shadow-md shadow-[#00D4B3]/20"
+                        >
+                            <Play size={18} fill="currentColor" />
+                            Iniciar Curaduría Automática
+                        </button>
+
+                        <p className="text-center text-gray-500 dark:text-[#6C757D] text-xs mt-3">
+                            La curaduría validará la disponibilidad de enlaces externamente.
+                        </p>
+                    </div>
+                )}
             </div>
 
             {/* Confirmation Modal */}
