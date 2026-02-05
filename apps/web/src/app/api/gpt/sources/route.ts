@@ -17,7 +17,8 @@ interface Source {
 }
 
 interface SourcesPayload {
-    course_id: string; // Changed from artifact_id
+    course_id?: string;
+    artifact_id?: string; // Add support for GPT sending artifact_id
     sources: Source[];
     metadata?: {
         total_lessons?: number;
@@ -41,10 +42,11 @@ export async function POST(request: NextRequest) {
     try {
         // 2. Parse and validate payload
         const payload: SourcesPayload = await request.json();
+        const lookupId = payload.course_id || payload.artifact_id;
 
-        if (!payload.course_id || !payload.sources || !Array.isArray(payload.sources)) {
+        if (!lookupId || !payload.sources || !Array.isArray(payload.sources)) {
             return NextResponse.json(
-                { success: false, error: 'Invalid payload: course_id and sources are required' },
+                { success: false, error: 'Invalid payload: course_id (or artifact_id) and sources are required' },
                 { status: 400 }
             );
         }
@@ -56,7 +58,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        console.log(`[GPT Sources API] Received ${payload.sources.length} sources for course ${payload.course_id}`);
+        console.log(`[GPT Sources API] Received ${payload.sources.length} sources for ID ${lookupId}`);
 
         // 3. Initialize Supabase with service role (server-side)
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -65,11 +67,11 @@ export async function POST(request: NextRequest) {
         const { data: artifact, error: artifactError } = await supabase
             .from('artifacts')
             .select('id, idea_central')
-            .or(`course_id.eq.${payload.course_id},id.eq.${payload.course_id}`) // Try both for robustness
+            .or(`course_id.eq.${lookupId},id.eq.${lookupId}`) // Try both for robustness
             .single();
 
         if (artifactError || !artifact) {
-            console.error('[GPT Sources API] Artifact not found for course_id:', payload.course_id);
+            console.error('[GPT Sources API] Artifact not found for lookupId:', lookupId);
             return NextResponse.json(
                 { success: false, error: 'Course/Artifact not found' },
                 { status: 404 }
