@@ -268,13 +268,13 @@ export async function publishToSoflia(artifactId: string) {
                         activities.push({
                             title: c.content.title || 'Evaluación',
                             type: 'quiz',
-                            data: c.content
+                            data: transformQuizContent(c.content)
                         });
                     } else if (c.type === 'DIALOGUE' && c.content) {
                         activities.push({
                             title: c.content.title || 'Simulación con LIA',
                             type: 'lia_script',
-                            data: c.content
+                            data: transformLiaContent(c.content)
                         });
                     }
                 });
@@ -387,7 +387,7 @@ export async function publishToSoflia(artifactId: string) {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error(`[publishToSoflia] API Error (${response.status}):`, errorText);
+                // console.error(`[publishToSoflia] API Error (${response.status}):`, errorText);
                 throw new Error(`Error remoto (${response.status}): ${errorText.substring(0, 200)}`);
             }
 
@@ -413,6 +413,52 @@ export async function publishToSoflia(artifactId: string) {
         console.error('[publishToSoflia] Validation/Exec Error:', error);
         return { success: false, error: error.message };
     }
+}
+
+// Helper to normalize Quiz Content to Spec (camelCase)
+function transformQuizContent(content: any) {
+    if (!content) return {};
+    
+    // Normalize questions
+    const questions = Array.isArray(content.questions) 
+        ? content.questions.map((q: any) => ({
+            id: q.id,
+            question: q.question,
+            // Map snake_case to camelCase
+            questionType: q.questionType || q.question_type || 'multiple_choice',
+            options: q.options || [],
+            correctAnswer: q.correctAnswer || q.correct_answer || '',
+            explanation: q.explanation || '',
+            points: q.points || 10
+        }))
+        : [];
+
+    return {
+        passing_score: content.passing_score || 80,
+        totalPoints: content.totalPoints || content.total_points || 100, // spec says totalPoints in camelCase example
+        questions: questions
+    };
+}
+
+// Helper to normalize LIA Content to Spec
+function transformLiaContent(content: any) {
+    if (!content) return {};
+
+    // Ensure scenes have correct property casing if needed (spec uses lower case standard keys, usually fine)
+    // But let's be safe
+    const scenes = Array.isArray(content.scenes)
+        ? content.scenes.map((s: any) => ({
+            character: s.character,
+            message: s.message,
+            emotion: s.emotion || 'neutral'
+        }))
+        : [];
+
+    return {
+        introduction: content.introduction || '',
+        scenes: scenes,
+        conclusion: content.conclusion || ''
+    };
 }
 
 // Helper to parse ISO 8601 duration (PT1H2M3S)
