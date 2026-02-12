@@ -11,7 +11,7 @@
   "dependencies": {
     "@courseforge/shared": "*",
     "@courseforge/ui": "*",
-    "@google/genai": "^1.38.0",
+    "@google/generative-ai": "^0.24.1",
     "@netlify/functions": "^5.1.2",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
